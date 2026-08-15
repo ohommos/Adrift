@@ -1,0 +1,15 @@
+{
+  "name": "adrift",
+  "private": true,
+  "workspaces": [
+    "app",
+    "server",
+    "shared"
+  ],
+  "scripts": {
+    "server:dev": "npm run dev --workspace=server",
+    "server:seed": "npm run seed --workspace=server",
+    "server:migrate": "npm run migrate --workspace=server",
+    "app:start": "npm run start --workspace=app"
+  }
+}

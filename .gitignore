@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+build/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+server/prisma/dev.db
+server/prisma/dev.db-journal
+ios/
+android/
+.metro-health-check*

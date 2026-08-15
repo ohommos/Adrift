@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model City {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  country    String
+  flag       String
+  lat        Float
+  lon        Float
+  isSeedHome Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  residents     User[]
+  targetBottles Bottle[] @relation("TargetCity")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  deviceId      String?  @unique
+  token         String   @unique
+  nickname      String
+  flag          String
+  homeCityId    String
+  homeCity      City     @relation(fields: [homeCityId], references: [id])
+  isPro         Boolean  @default(false)
+  credits       Int      @default(0)
+  usedFreeReply Boolean  @default(false)
+  isBot         Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  bottles       Bottle[]
+  interactions  BottleInteraction[]
+  sentReplies   Reply[]             @relation("ReplyFrom")
+  receivedReplies Reply[]           @relation("ReplyTo")
+  notifications Notification[]
+}
+
+model Bottle {
+  id           String   @id @default(cuid())
+  authorId     String
+  author       User     @relation(fields: [authorId], references: [id])
+  text         String
+  scope        String // "city" | "global"
+  targetCityId String?
+  targetCity   City?    @relation("TargetCity", fields: [targetCityId], references: [id])
+  state        String   @default("sealed") // sealed | drifting | nearing | opened | lost
+  originLat    Float
+  originLon    Float
+  currentLat   Float
+  currentLon   Float
+  progress     Float    @default(0)
+  passOnCount  Int      @default(0)
+  breakVotes   Int      @default(0)
+  createdAt    DateTime @default(now())
+  lastEventAt  DateTime @default(now())
+
+  interactions BottleInteraction[]
+  opens        BottleOpen[]
+  replies      Reply[]
+  notifications Notification[]
+}
+
+// One row per (bottle, reader): tracks that a reader opened a bottle and,
+// once decided, whether they broke it or passed it on. Unique per pair so a
+// reader can only earn the 1-credit break/pass reward once per bottle.
+model BottleInteraction {
+  id        String    @id @default(cuid())
+  bottleId  String
+  bottle    Bottle    @relation(fields: [bottleId], references: [id])
+  readerId  String
+  reader    User      @relation(fields: [readerId], references: [id])
+  openedAt  DateTime  @default(now())
+  action    String? // "break" | "pass", null until the reader decides
+  actedAt   DateTime?
+
+  @@unique([bottleId, readerId])
+}
+
+// Sender-visible aggregate (country, shore count) is derived from these rows.
+// Never exposes which reader opened it.
+model BottleOpen {
+  id       String   @id @default(cuid())
+  bottleId String
+  bottle   Bottle   @relation(fields: [bottleId], references: [id])
+  readerId String
+  country  String
+  openedAt DateTime @default(now())
+}
+
+model Reply {
+  id         String   @id @default(cuid())
+  bottleId   String
+  bottle     Bottle   @relation(fields: [bottleId], references: [id])
+  fromUserId String
+  fromUser   User     @relation("ReplyFrom", fields: [fromUserId], references: [id])
+  toUserId   String
+  toUser     User     @relation("ReplyTo", fields: [toUserId], references: [id])
+  text       String
+  createdAt  DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  bottleId  String?
+  bottle    Bottle?  @relation(fields: [bottleId], references: [id])
+  kind      String // opened | passed | country | shore | lost | reply
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

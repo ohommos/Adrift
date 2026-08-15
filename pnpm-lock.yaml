@@ -167,6 +167,9 @@ importers:
 
   artifacts/api-server:
     dependencies:
+      '@adrift/shared':
+        specifier: workspace:*
+        version: link:../../shared
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -451,6 +454,8 @@ importers:
       tsx:
         specifier: 'catalog:'
         version: 4.23.1
+
+  shared: {}
 
 packages:
 

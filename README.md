@@ -3,6 +3,8 @@
 A digital message in a bottle. Write something, seal it, throw it into the
 ocean — strangers find it, and you're told when it's opened, never by whom.
 
+Full product/design spec: [`docs/adrift-spec.md`](docs/adrift-spec.md).
+
 Monorepo:
 
 - `server/` — Express + Prisma (SQLite) API and the drift economy engine

@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/"
+title = "Adrift"
+description = "A message in a bottle social app. Write an anonymous note, seal it, and let it drift to strangers across the ocean. You're notified when someone opens it — but never by whom. Includes a world map chart, an inbox of received bottles, and a Pro paywall for unlimited replies and city targeting."
+version = "1.0.0"
+id = "artifacts/adrift"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 22509
+
+[services.development]
+run = "pnpm --filter @workspace/adrift run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/adrift", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/adrift", "run", "serve" ]
+
+[services.env]
+PORT = "22509"
+BASE_PATH = "/"

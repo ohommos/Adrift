@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4,
   },
-  primaryCtaText: { fontSize: 14, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
+  primaryCtaText: { fontSize: 14, fontFamily: 'Spectral_600SemiBold' },
   secondaryCta: {
     height: 44,
     borderRadius: 999,

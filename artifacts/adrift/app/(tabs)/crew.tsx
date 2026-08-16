@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   stat: { alignItems: 'center' },
-  statValue: { fontSize: 18, fontFamily: 'PirataOne_400Regular' },
+  statValue: { fontSize: 19, fontFamily: 'Cinzel_700Bold' },
   statLabel: { fontSize: 11, marginTop: 2, fontFamily: 'Spectral_400Regular' },
   card: { borderRadius: 18, padding: 16, marginBottom: 12 },
   barRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
@@ -194,5 +194,5 @@ const styles = StyleSheet.create({
     minWidth: 130,
     alignItems: 'center',
   },
-  proCtaText: { fontSize: 13, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
+  proCtaText: { fontSize: 13, fontFamily: 'Spectral_600SemiBold' },
 });

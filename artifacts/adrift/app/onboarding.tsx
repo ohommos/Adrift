@@ -171,7 +171,7 @@ export default function OnboardingScreen() {
           {loading ? (
             <ActivityIndicator color={colors.primaryForeground} />
           ) : (
-            <Text style={[styles.buttonText, { color: colors.primaryForeground, fontFamily: 'PirataOne_400Regular' }]}>
+            <Text style={[styles.buttonText, { color: colors.primaryForeground, fontFamily: 'Spectral_600SemiBold' }]}>
               Cast Off
             </Text>
           )}

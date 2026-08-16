@@ -224,5 +224,5 @@ const styles = StyleSheet.create({
   sheetName: { fontSize: 20, fontFamily: 'PirataOne_400Regular' },
   sheetCount: { fontSize: 13, marginTop: 4, marginBottom: 16, fontFamily: 'Cinzel_400Regular' },
   sheetCta: { height: 50, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  sheetCtaText: { fontSize: 15, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
+  sheetCtaText: { fontSize: 15, fontFamily: 'Spectral_600SemiBold' },
 });

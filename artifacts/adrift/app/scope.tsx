@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   targetedSub: { fontSize: 11, marginTop: 2, fontFamily: 'Spectral_400Regular' },
   option: { borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 12 },
   optionHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  optionLabel: { fontSize: 16, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
+  optionLabel: { fontSize: 15, fontFamily: 'Spectral_600SemiBold' },
   optionDesc: { fontSize: 12, marginTop: 3, lineHeight: 18, fontFamily: 'Spectral_400Regular' },
   deal: { borderRadius: 18, padding: 16, marginTop: 4 },
   dealText: { fontSize: 12, lineHeight: 19, fontFamily: 'Spectral_400Regular' },

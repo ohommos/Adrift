@@ -172,6 +172,6 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 16,
   },
-  ctaText: { fontSize: 14, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
+  ctaText: { fontSize: 14, fontFamily: 'Spectral_600SemiBold' },
   ctaNote: { fontSize: 11, textAlign: 'center', marginTop: 9, fontFamily: 'Spectral_400Regular' },
 });

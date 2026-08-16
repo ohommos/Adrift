@@ -12,9 +12,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { InboxItem } from '@adrift/shared';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { useInbox } from '@/lib/api';
+import { useCorrespondences, useInbox } from '@/lib/api';
 import { EmptyState } from '@/components/EmptyState';
 import {
+  Rule,
   ScopeBadge,
   Shores,
   TopBar,
@@ -22,6 +23,7 @@ import {
   webBottom,
   webTop,
 } from '@/components/ui/primitives';
+import type { CorrespondenceSummary } from '@/lib/api';
 
 /** "just now" / "3h" / "yesterday" — the design's relative stamp. */
 function since(iso: string): string {
@@ -77,11 +79,40 @@ function InboxRow({ item, onPress }: { item: InboxItem; onPress: () => void }) {
   );
 }
 
+function LetterRow({ item, onPress }: { item: CorrespondenceSummary; onPress: () => void }) {
+  const colors = useColors();
+  return (
+    <Pressable onPress={onPress} style={[styles.row, { backgroundColor: colors.card }]}>
+      <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
+        <Text style={styles.avatarGlyph}>{item.withFlag}</Text>
+      </View>
+      <View style={styles.rowBody}>
+        <View style={styles.rowHead}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]} numberOfLines={1}>
+            {item.withNickname}
+          </Text>
+          {item.unread > 0 && (
+            <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+          )}
+        </View>
+        <Text style={[styles.rowPreview, { color: colors.mutedForeground }]} numberOfLines={1}>
+          {item.unread > 0
+            ? `${item.unread} new ${item.unread === 1 ? 'letter' : 'letters'}`
+            : item.awaitingArrival
+              ? 'Your letter is still crossing'
+              : `From your bottle: “${item.bottleText}”`}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function InboxScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token } = useIdentity();
   const { data: bottles, isLoading, refetch, isRefetching } = useInbox(token);
+  const { data: letters } = useCorrespondences(token);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -102,6 +133,19 @@ export default function InboxScreen() {
         renderItem={({ item }) => (
           <InboxRow item={item} onPress={() => router.push(`/read/${item.id}`)} />
         )}
+        ListHeaderComponent={
+          letters && letters.length > 0 ? (
+            <View style={styles.section}>
+              <Rule label="Letters" />
+              {letters.map((l) => (
+                <LetterRow key={l.id} item={l} onPress={() => router.push(`/thread/${l.id}`)} />
+              ))}
+              <View style={{ marginTop: 18 }}>
+                <Rule label="Washed up" />
+              </View>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           isLoading ? null : (
             <EmptyState
@@ -137,4 +181,6 @@ const styles = StyleSheet.create({
   rowTime: { fontSize: 10.5, fontFamily: 'Cinzel_400Regular' },
   rowPreview: { fontSize: 12, marginTop: 3, fontFamily: 'Spectral_400Regular' },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  section: { marginBottom: 4 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4 },
 });

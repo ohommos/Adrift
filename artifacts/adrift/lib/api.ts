@@ -12,6 +12,9 @@ function getBase() {
 // erased at build time, so Metro never has to resolve the workspace package.
 import type {
   AppNotification,
+  CorrespondenceDetail,
+  CorrespondenceSummary,
+  WriteLetterResponse,
   BottleDetail,
   BottleSummary,
   City,
@@ -27,6 +30,8 @@ import type {
 
 export type {
   AppNotification,
+  CorrespondenceDetail,
+  CorrespondenceSummary,
   BottleDetail,
   BottleSummary,
   City,
@@ -167,6 +172,27 @@ export const api = {
       body: JSON.stringify({ text }),
     }),
 
+  getCorrespondences: (token: string) =>
+    apiFetch<CorrespondenceSummary[]>('/correspondences', { token }),
+
+  getCorrespondence: (token: string, id: string) =>
+    apiFetch<CorrespondenceDetail>(`/correspondences/${id}`, { token }),
+
+  /** Answer a bottle — opens the correspondence if there isn't one yet. */
+  answerBottle: (token: string, bottleId: string, text: string) =>
+    apiFetch<WriteLetterResponse>(`/bottles/${bottleId}/answer`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ text }),
+    }),
+
+  writeLetter: (token: string, correspondenceId: string, text: string) =>
+    apiFetch<WriteLetterResponse>(`/correspondences/${correspondenceId}/letters`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ text }),
+    }),
+
   getReplies: (token: string, bottleId: string) =>
     apiFetch<Reply[]>(`/bottles/${bottleId}/replies`, { token }),
 
@@ -231,6 +257,26 @@ export function useNotifications(token: string | null) {
     queryFn: () => api.getNotifications(token!),
     enabled: !!token,
     refetchInterval: 20_000,
+  });
+}
+
+export function useCorrespondences(token: string | null) {
+  return useQuery({
+    queryKey: ['correspondences'],
+    queryFn: () => api.getCorrespondences(token!),
+    enabled: !!token,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useCorrespondence(token: string | null, id: string) {
+  return useQuery({
+    queryKey: ['correspondence', id],
+    queryFn: () => api.getCorrespondence(token!, id),
+    enabled: !!token && !!id,
+    // A letter in transit lands on its own; keep the thread fresh so the
+    // arrival shows up without the reader doing anything.
+    refetchInterval: 10_000,
   });
 }
 

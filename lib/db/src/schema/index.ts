@@ -129,6 +129,55 @@ export const replyTable = pgTable("Reply", {
 });
 
 // ---------------------------------------------------------------------------
+// Correspondence — one private channel per (bottle, stranger who answered).
+// A single bottle can open several, one per person who wrote back.
+// ---------------------------------------------------------------------------
+export const correspondenceTable = pgTable(
+  "Correspondence",
+  {
+    id: id(),
+    bottleId: text("bottleId")
+      .notNull()
+      .references(() => bottleTable.id),
+    /** The bottle's author. Always free to answer their own bottle. */
+    authorId: text("authorId")
+      .notNull()
+      .references(() => userTable.id),
+    /** The stranger who answered it. Pays to keep the channel open. */
+    correspondentId: text("correspondentId")
+      .notNull()
+      .references(() => userTable.id),
+    /** False until the stranger has paid to continue past the first letter. */
+    channelOpen: boolean("channelOpen").notNull().default(false),
+    lastAt: timestamp("lastAt").notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("Correspondence_bottle_correspondent_key").on(t.bottleId, t.correspondentId),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Letter — one message in a correspondence, in transit until deliverAt.
+// ---------------------------------------------------------------------------
+export const letterTable = pgTable("Letter", {
+  id: id(),
+  correspondenceId: text("correspondenceId")
+    .notNull()
+    .references(() => correspondenceTable.id),
+  fromUserId: text("fromUserId")
+    .notNull()
+    .references(() => userTable.id),
+  text: text("text").notNull(),
+  sentAt: timestamp("sentAt").notNull().defaultNow(),
+  /** When it lands. Distance between the two home shores decides this. */
+  deliverAt: timestamp("deliverAt").notNull(),
+  /** Set by the engine when it lands, so the arrival notifies exactly once. */
+  deliveredAt: timestamp("deliveredAt"),
+  readAt: timestamp("readAt"),
+});
+
+// ---------------------------------------------------------------------------
 // Notification
 // ---------------------------------------------------------------------------
 export const notificationTable = pgTable("Notification", {
@@ -153,3 +202,5 @@ export type BottleInteraction = typeof bottleInteractionTable.$inferSelect;
 export type BottleOpen = typeof bottleOpenTable.$inferSelect;
 export type Reply = typeof replyTable.$inferSelect;
 export type Notification = typeof notificationTable.$inferSelect;
+export type Correspondence = typeof correspondenceTable.$inferSelect;
+export type Letter = typeof letterTable.$inferSelect;

@@ -6,7 +6,7 @@ import Svg, { Circle, Ellipse, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { useInbox } from '@/lib/api';
+import { useCorrespondences, useInbox } from '@/lib/api';
 
 // Structural shape of what expo-router's <Tabs tabBar> hands us, declared
 // locally so this does not depend on reaching into a transitive package.
@@ -80,7 +80,11 @@ export function TabBar({ state, navigation }: TabBarProps) {
   // live off the poll already running there.
   const { token } = useIdentity();
   const { data: inbox } = useInbox(token);
-  const unopened = (inbox ?? []).filter((b) => !b.opened).length;
+  const { data: letters } = useCorrespondences(token);
+  // Both kinds of arrival count: sealed bottles and letters that have landed.
+  const unopened =
+    (inbox ?? []).filter((b) => !b.opened).length +
+    (letters ?? []).reduce((n, l) => n + l.unread, 0);
 
   const go = (index: number, name: string) => {
     const isFocused = state.index === index;

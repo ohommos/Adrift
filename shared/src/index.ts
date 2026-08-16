@@ -117,6 +117,56 @@ export interface Reply {
   createdAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Correspondence — a private channel opened when someone answers a bottle.
+// ---------------------------------------------------------------------------
+
+export interface Letter {
+  id: string;
+  fromMe: boolean;
+  /** Null while the letter is still crossing and is not yours. */
+  text: string | null;
+  sentAt: string;
+  /** True once it has landed. Your own letters show as crossing until then. */
+  arrived: boolean;
+}
+
+export interface CorrespondenceSummary {
+  id: string;
+  bottleId: string;
+  /** The other person's sea-name and flag. Never more than that. */
+  withNickname: string;
+  withFlag: string;
+  /** Opening line of the bottle that started it. */
+  bottleText: string;
+  lastAt: string;
+  unread: number;
+  /** A letter of yours is still crossing. */
+  awaitingArrival: boolean;
+}
+
+export interface CorrespondenceDetail extends CorrespondenceSummary {
+  letters: Letter[];
+  /** False until the channel has been paid open. */
+  channelOpen: boolean;
+  /** Credits the next letter will cost — 0 when free. */
+  writeCost: number;
+  canWrite: boolean;
+}
+
+export interface WriteLetterResponse {
+  credits: number;
+  channelOpen: boolean;
+  /** Minutes this letter will spend crossing. Never surfaced as an ETA. */
+  crossingMinutes: number;
+}
+
+/** Same shore still takes a moment; the far side of the planet takes this. */
+export const CROSSING_MIN_MINUTES = 2;
+export const CROSSING_MAX_MINUTES = 24;
+/** Used when either side has not set a home shore. */
+export const CROSSING_DEFAULT_MINUTES = 12;
+
 export interface CityShoreLetter {
   nickname: string;
   passOnCount: number;

@@ -16,7 +16,7 @@ export default function ReplyScreen() {
     if (!token || !bottleId || sending) return;
     setSending(true);
     try {
-      await api.replyToBottle(token, bottleId, text.trim());
+      await api.answerBottle(token, bottleId, text.trim());
       await refreshIdentity();
       router.replace('/reply-sent');
     } catch (e: unknown) {

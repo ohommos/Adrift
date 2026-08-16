@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -17,6 +16,7 @@ import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { useCompose } from '@/context/ComposeContext';
 import { useCities, api } from '@/lib/api';
+import { showAlert } from '@/lib/alert';
 
 export default function ScopeScreen() {
   const colors = useColors();
@@ -46,7 +46,7 @@ export default function ScopeScreen() {
       router.replace('/sent');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not cast bottle.';
-      Alert.alert('Bottle sank', msg);
+      showAlert('Bottle sank', msg);
     } finally {
       setCasting(false);
     }
@@ -107,10 +107,9 @@ export default function ScopeScreen() {
         <TouchableOpacity
           onPress={() => {
             if (!identity?.isPro) {
-              Alert.alert(
+              showAlert(
                 'Pro required',
-                'Targeting a specific city requires a Pro account. Upgrade for $5, once, forever.',
-                [{ text: 'OK' }]
+                'Targeting a specific city requires a Pro account. Upgrade for $5, once, forever.'
               );
               return;
             }

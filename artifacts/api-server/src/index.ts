@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startEngine } from "./engine";
+import { ensureSeeded } from "./seed";
 
 const rawPort = process.env["PORT"];
 
@@ -23,5 +24,11 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
-  startEngine();
+
+  // Seed before the engine starts so the first bot tick has cities and
+  // personas to work with. A seed failure must not take the server down —
+  // the API is still serviceable without cold-start data.
+  ensureSeeded()
+    .catch((err) => logger.error({ err }, "[seed] failed"))
+    .finally(() => startEngine());
 });

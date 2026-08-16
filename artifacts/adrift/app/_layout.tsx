@@ -31,10 +31,13 @@ function RootLayoutNav() {
 
   useEffect(() => {
     if (isLoading) return;
-    const inTabs = segments[0] === '(tabs)';
-    if (!hasIdentity && inTabs) {
+    // Guard only the auth boundary. Anything stricter (e.g. "bounce every
+    // non-tab route back to the tabs") would also eject the stack routes the
+    // app pushes on top of the tabs — /scope, /read/:id, /tracker/:id, …
+    const inOnboarding = segments[0] === 'onboarding';
+    if (!hasIdentity && !inOnboarding) {
       router.replace('/onboarding');
-    } else if (hasIdentity && !inTabs) {
+    } else if (hasIdentity && inOnboarding) {
       router.replace('/(tabs)');
     }
   }, [isLoading, hasIdentity, segments]);

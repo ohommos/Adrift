@@ -9,7 +9,6 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,9 +16,20 @@ import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { api } from '@/lib/api';
+import { getStoredItem, setStoredItem } from '@/lib/storage';
 
-function generateDeviceId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+const DEVICE_ID_KEY = 'adrift.deviceId';
+
+// The id has to survive across attempts. A fresh one per tap makes the
+// server's "return the existing identity for this device" branch unreachable,
+// so a signup that creates the account but fails before the token is stored
+// leaves the nickname taken with no way for its owner to claim it back.
+async function getDeviceId(): Promise<string> {
+  const existing = await getStoredItem(DEVICE_ID_KEY).catch(() => null);
+  if (existing) return existing;
+  const fresh = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+  await setStoredItem(DEVICE_ID_KEY, fresh).catch(() => {});
+  return fresh;
 }
 
 export default function OnboardingScreen() {
@@ -28,6 +38,7 @@ export default function OnboardingScreen() {
   const { setIdentity } = useIdentity();
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const canCast = nickname.trim().length >= 2 && nickname.trim().length <= 24;
 
@@ -35,14 +46,17 @@ export default function OnboardingScreen() {
     if (!canCast || loading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
+    setError(null);
     try {
-      const deviceId = generateDeviceId();
+      const deviceId = await getDeviceId();
       const { token, identity } = await api.createIdentity(deviceId, nickname.trim());
       await setIdentity(identity, token);
       // Navigation is handled by _layout.tsx watching hasIdentity
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Could not reach the sea.';
-      Alert.alert('The tide is out', msg);
+      // Shown inline rather than through Alert.alert — react-native-web's
+      // Alert is a no-op, which left web users tapping a button that
+      // silently did nothing.
+      setError(e instanceof Error ? e.message : 'Could not reach the sea.');
     } finally {
       setLoading(false);
     }
@@ -91,7 +105,10 @@ export default function OnboardingScreen() {
             placeholder="e.g. saltmoth, nightbus_, tidewatcher"
             placeholderTextColor={colors.mutedForeground}
             value={nickname}
-            onChangeText={setNickname}
+            onChangeText={(t) => {
+              setNickname(t);
+              if (error) setError(null);
+            }}
             maxLength={24}
             autoCorrect={false}
             autoCapitalize="none"
@@ -101,6 +118,11 @@ export default function OnboardingScreen() {
           <Text style={[styles.hint, { color: colors.mutedForeground }]}>
             2–24 characters · this is how strangers know you
           </Text>
+          {error && (
+            <Text style={[styles.error, { color: colors.destructive }]}>
+              {error}
+            </Text>
+          )}
         </View>
 
         {/* CTA */}
@@ -173,6 +195,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Spectral_400Regular',
     opacity: 0.7,
+  },
+  error: {
+    fontSize: 13,
+    fontFamily: 'Spectral_400Regular',
+    lineHeight: 18,
   },
   button: {
     width: '100%',

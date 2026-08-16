@@ -1,4 +1,4 @@
-import { db, userTable } from "@workspace/db";
+import { db, userTable, cityTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { DIALS } from "./dials";
 import { createBottle, listInbox, openBottle, replyToBottle, resolveFate } from "../services/bottleActions";
@@ -54,9 +54,15 @@ async function actAsBot(botId: string) {
 
   // Nothing to read right now — occasionally seed fresh supply instead.
   if (Math.random() < 0.3) {
+    // A city-scoped bottle needs a target; without one createBottle rejects
+    // it, which silently threw away half of every bot's supply.
+    const cities = await db.select({ id: cityTable.id }).from(cityTable);
+    const targetCity = cities.length > 0 && Math.random() < 0.5 ? pick(cities) : null;
     await createBottle(botId, {
       text: pick(BOTTLE_LINES),
-      scope: Math.random() < 0.5 ? "global" : "city",
+      ...(targetCity
+        ? { scope: "city" as const, targetCityId: targetCity.id }
+        : { scope: "global" as const }),
     });
   }
 }

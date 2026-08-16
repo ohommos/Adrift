@@ -69,6 +69,18 @@ export interface CityShore {
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** True only when the server actively rejected the credentials. */
+export function isAuthError(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 401 || e.status === 403);
+}
+
 async function apiFetch<T>(
   path: string,
   options?: RequestInit & { token?: string | null }
@@ -82,7 +94,7 @@ async function apiFetch<T>(
     const msg = (body as { error?: string; message?: string }).error
       ?? (body as { message?: string }).message
       ?? `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new ApiError(res.status, msg);
   }
   return res.json() as Promise<T>;
 }
@@ -105,11 +117,17 @@ export const api = {
 
   getMyBottles: (token: string) => apiFetch<Bottle[]>('/bottles/mine', { token }),
 
+  // `scope` is required by the server and has no default — omitting it makes
+  // every cast fail with 400.
   createBottle: (token: string, text: string, targetCityId?: string) =>
     apiFetch<Bottle>('/bottles', {
       method: 'POST',
       token,
-      body: JSON.stringify({ text, ...(targetCityId ? { targetCityId } : {}) }),
+      body: JSON.stringify(
+        targetCityId
+          ? { text, scope: 'city', targetCityId }
+          : { text, scope: 'global' }
+      ),
     }),
 
   getInbox: (token: string) => apiFetch<Bottle[]>('/inbox', { token }),

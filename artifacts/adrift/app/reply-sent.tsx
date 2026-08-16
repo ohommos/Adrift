@@ -1,57 +1,41 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 
 export default function ReplySentScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
-  const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0);
-
   return (
-    <View
-      style={[
-        styles.root,
-        {
-          backgroundColor: colors.background,
-          paddingTop: topPad,
-          paddingBottom: bottomPad,
-        },
-      ]}
-    >
-      <Text style={styles.wave}>🌊</Text>
-      <Text style={[styles.title, { color: colors.seaglass, fontFamily: 'PirataOne_400Regular' }]}>
-        Reply Cast
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={[styles.badge, { backgroundColor: colors.secondary }]}>
+        <Feather name="check" size={30} color={colors.seaglass} />
+      </View>
+      <Text style={[styles.title, { color: colors.foreground }]}>Sent.</Text>
+      <Text style={[styles.body, { color: colors.mutedForeground }]}>
+        It goes straight to them. The bottle carries on to its next shore.
       </Text>
-      <Text style={[styles.sub, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-        Your reply is drifting back{'\n'}to the one who wrote it.
-      </Text>
-      <TouchableOpacity
+      <Pressable
         onPress={() => router.replace('/(tabs)/haul')}
-        activeOpacity={0.8}
-        style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
+        style={[styles.cta, { backgroundColor: colors.secondary }]}
       >
-        <Text style={[styles.buttonText, { color: colors.foreground, fontFamily: 'PirataOne_400Regular' }]}>
-          Back to Haul
-        </Text>
-      </TouchableOpacity>
+        <Text style={[styles.ctaText, { color: colors.foreground }]}>Back to inbox</Text>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
-  wave: { fontSize: 72, marginBottom: 8 },
-  title: { fontSize: 38, letterSpacing: 1 },
-  sub: { fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  button: {
-    paddingHorizontal: 36,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 12,
+  root: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  badge: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  title: { fontSize: 22, fontFamily: 'PirataOne_400Regular' },
+  body: {
+    fontSize: 13.5,
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 21,
+    fontFamily: 'Spectral_400Regular',
   },
-  buttonText: { fontSize: 20 },
+  cta: { marginTop: 40, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 999 },
+  ctaText: { fontSize: 13.5, fontFamily: 'Spectral_400Regular' },
 });

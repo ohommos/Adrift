@@ -1,33 +1,46 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Platform,
   ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { showAlert, showConfirm } from '@/lib/alert';
 import { useIdentity } from '@/context/IdentityContext';
-import { api } from '@/lib/api';
+import { api, useMyBottles } from '@/lib/api';
+import { showAlert, showConfirm } from '@/lib/alert';
+import { CREDITS_PER_REPLY } from '@/lib/limits';
+import { Rule, TopBar, webBottom, webTop } from '@/components/ui/primitives';
 
-export default function CrewScreen() {
+export default function YouScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { identity, token, refreshIdentity } = useIdentity();
+  const { data: mine } = useMyBottles(token);
   const [unlocking, setUnlocking] = useState(false);
 
-  const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
+  // Derived from your own bottles — the design's three stats need no new
+  // endpoint, they are all present in what Tide already fetches.
+  const stats = useMemo(() => {
+    const list = mine ?? [];
+    const found = list.filter((b) => b.state === 'opened' || b.countries.length > 0).length;
+    const shores = list.reduce((a, b) => a + b.passOnCount, 0);
+    return [
+      { value: String(list.length), label: 'Thrown' },
+      { value: String(found), label: 'Found' },
+      { value: String(shores), label: 'Shores reached' },
+    ];
+  }, [mine]);
 
-  const handleUnlockPro = async () => {
+  const handleUnlock = () => {
     if (!token || unlocking) return;
     showConfirm(
-      'Unlock Pro',
-      'Go Pro for $5 — once, forever. Unlimited replies and send to any city in the world.',
+      'Adrift Pro',
+      'Go Pro for $5 - once, forever. Unlimited replies and send to any city in the world.',
       'Unlock',
       async () => {
         setUnlocking(true);
@@ -35,8 +48,7 @@ export default function CrewScreen() {
           await api.unlockPro(token);
           await refreshIdentity();
         } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : 'Could not unlock Pro.';
-          showAlert('Tide turned', msg);
+          showAlert('Tide turned', e instanceof Error ? e.message : 'Could not unlock Pro.');
         } finally {
           setUnlocking(false);
         }
@@ -46,112 +58,105 @@ export default function CrewScreen() {
 
   if (!identity) return null;
 
+  const credits = identity.credits;
+  const toGo = Math.max(0, CREDITS_PER_REPLY - credits);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={{ paddingTop: insets.top + webTop }}>
+        <TopBar title="You" />
+      </View>
+
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          {
-            paddingTop: topPad + 16,
-            paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 100,
-          },
-        ]}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 8,
+          paddingBottom: insets.bottom + webBottom + 140,
+        }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <Text style={[styles.screenTitle, { color: colors.primary }]}>Crew</Text>
-
-        {/* Identity card */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={styles.identityRow}>
-            <View style={[styles.avatarWrap, { backgroundColor: colors.secondary }]}>
-              <Text style={styles.avatarFlag}>{identity.flag}</Text>
-            </View>
-            <View style={styles.identityInfo}>
-              <Text style={[styles.nickname, { color: colors.foreground, fontFamily: 'PirataOne_400Regular' }]}>
-                {identity.nickname}
-              </Text>
-              <View style={styles.badgeRow}>
-                {identity.isPro ? (
-                  <View style={[styles.proBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={[styles.proBadgeText, { color: colors.primaryForeground }]}>
-                      PRO
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={[styles.freeLabel, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-                    FREE CREW
-                  </Text>
-                )}
-              </View>
-            </View>
+        <View style={styles.identity}>
+          <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
+            <Text style={styles.avatarGlyph}>{identity.flag}</Text>
           </View>
-        </View>
-
-        {/* Credits */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={styles.creditRow}>
-            <Feather name="star" size={18} color={colors.primary} />
-            <Text style={[styles.creditValue, { color: colors.foreground, fontFamily: 'PirataOne_400Regular' }]}>
-              {identity.credits}
-            </Text>
-            <Text style={[styles.creditLabel, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-              CREDITS
-            </Text>
-          </View>
-          <Text style={[styles.creditHint, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-            Credits are earned by deciding a stranger's bottle — break or pass it on, and each earns 1. Three credits buy a reply.
+          <Text style={[styles.nick, { color: colors.foreground }]}>{identity.nickname}</Text>
+          <Text style={[styles.home, { color: colors.mutedForeground }]}>
+            {identity.homeCountry === 'Unknown' ? 'Somewhere at sea' : identity.homeCountry}
           </Text>
         </View>
 
-        {/* Reply status */}
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={styles.replyRow}>
-            <Feather
-              name={identity.usedFreeReply ? 'lock' : 'message-circle'}
-              size={16}
-              color={identity.usedFreeReply ? colors.mutedForeground : colors.seaglass}
-            />
-            <Text
-              style={[
-                styles.replyStatus,
-                {
-                  color: identity.usedFreeReply ? colors.mutedForeground : colors.seaglass,
-                  fontFamily: 'Spectral_400Regular',
-                },
-              ]}
-            >
-              {identity.isPro
-                ? 'Unlimited replies'
-                : identity.usedFreeReply
-                ? 'Free reply used — upgrade to reply again'
-                : 'One free reply remaining'}
-            </Text>
-          </View>
+        <View style={[styles.statsRow, { backgroundColor: colors.card }]}>
+          {stats.map((s) => (
+            <View key={s.label} style={styles.stat}>
+              <Text style={[styles.statValue, { color: colors.foreground }]}>{s.value}</Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Pro upgrade */}
         {!identity.isPro && (
-          <TouchableOpacity
-            onPress={handleUnlockPro}
-            activeOpacity={0.8}
-            disabled={unlocking}
-            style={[styles.proButton, { backgroundColor: colors.primary }]}
-          >
-            {unlocking ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <>
-                <Text style={[styles.proButtonTitle, { color: colors.primaryForeground, fontFamily: 'PirataOne_400Regular' }]}>
-                  Go Pro — $5 once
-                </Text>
-                <Text style={[styles.proButtonSub, { color: colors.primaryForeground, fontFamily: 'Spectral_400Regular' }]}>
-                  Unlimited replies · Send to any city
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Rule label="Toward your next reply" />
+            <View style={styles.barRow}>
+              {[0, 1, 2].map((i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.bar,
+                    { backgroundColor: i < credits ? colors.primary : colors.secondary },
+                  ]}
+                />
+              ))}
+            </View>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+              {!identity.usedFreeReply
+                ? 'Your first reply is free - it is waiting for you.'
+                : credits >= CREDITS_PER_REPLY
+                  ? 'You have earned a reply.'
+                  : `${toGo} more ${toGo === 1 ? 'bottle' : 'bottles'} passed on or broken.`}
+            </Text>
+          </View>
         )}
+
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: identity.isPro ? colors.card : colors.secondary,
+              borderColor: identity.isPro ? 'transparent' : colors.primary,
+              borderWidth: identity.isPro ? 0 : 1,
+            },
+          ]}
+        >
+          <View style={styles.proHead}>
+            <Feather
+              name={identity.isPro ? 'unlock' : 'lock'}
+              size={15}
+              color={identity.isPro ? colors.seaglass : colors.primary}
+            />
+            <Text style={[styles.proTitle, { color: colors.foreground }]}>
+              {identity.isPro ? 'Adrift Pro active' : 'Adrift Pro'}
+            </Text>
+          </View>
+          <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+            {identity.isPro
+              ? 'Unlimited replies and any city on the planet.'
+              : 'Skip the three pass-ons. Reply to anyone, any time.'}
+          </Text>
+          {!identity.isPro && (
+            <Pressable
+              onPress={handleUnlock}
+              disabled={unlocking}
+              style={[styles.proCta, { backgroundColor: colors.primary }]}
+            >
+              {unlocking ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <Text style={[styles.proCtaText, { color: colors.background }]}>Unlock for $5</Text>
+              )}
+            </Pressable>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -159,66 +164,35 @@ export default function CrewScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 20, gap: 14 },
-  screenTitle: {
-    fontSize: 34,
-    fontFamily: 'PirataOne_400Regular',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  card: {
-    borderRadius: 14,
-    padding: 18,
-    gap: 10,
-  },
-  identityRow: {
+  identity: { alignItems: 'center', paddingVertical: 22 },
+  avatar: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
+  avatarGlyph: { fontSize: 32 },
+  nick: { fontSize: 20, marginTop: 12, fontFamily: 'PirataOne_400Regular' },
+  home: { fontSize: 12, marginTop: 2, fontFamily: 'Spectral_400Regular' },
+  statsRow: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+  },
+  stat: { alignItems: 'center' },
+  statValue: { fontSize: 18, fontFamily: 'PirataOne_400Regular' },
+  statLabel: { fontSize: 11, marginTop: 2, fontFamily: 'Spectral_400Regular' },
+  card: { borderRadius: 18, padding: 16, marginBottom: 12 },
+  barRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  bar: { flex: 1, height: 6, borderRadius: 3 },
+  cardBody: { fontSize: 12.5, lineHeight: 19, fontFamily: 'Spectral_400Regular' },
+  proHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  proTitle: { fontSize: 13.5, fontFamily: 'Spectral_600SemiBold' },
+  proCta: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginTop: 12,
+    minWidth: 130,
     alignItems: 'center',
-    gap: 14,
   },
-  avatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarFlag: { fontSize: 26 },
-  identityInfo: { gap: 4 },
-  nickname: { fontSize: 24 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center' },
-  proBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  proBadgeText: {
-    fontSize: 11,
-    fontFamily: 'Cinzel_400Regular',
-    letterSpacing: 1,
-  },
-  freeLabel: { fontSize: 11, letterSpacing: 1 },
-  creditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  creditValue: { fontSize: 28 },
-  creditLabel: { fontSize: 12, letterSpacing: 1 },
-  creditHint: { fontSize: 13, lineHeight: 19, opacity: 0.7 },
-  replyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  replyStatus: { fontSize: 14 },
-  proButton: {
-    borderRadius: 14,
-    padding: 20,
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  proButtonTitle: { fontSize: 22 },
-  proButtonSub: { fontSize: 14, opacity: 0.85 },
+  proCtaText: { fontSize: 13, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
 });

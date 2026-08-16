@@ -1,119 +1,177 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
   ActivityIndicator,
-  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { G, Path, Rect } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { useCityShore } from '@/lib/api';
-import { EmptyState } from '@/components/EmptyState';
+import { useCompose } from '@/context/ComposeContext';
+import { showAlert } from '@/lib/alert';
+import { Paper, Rule, TopBar, patina, webBottom, webTop } from '@/components/ui/primitives';
 
-export default function CityScreen() {
+/** Bottles bobbing in the harbour, as many as the port is busy. */
+function Harbour({ count }: { count: number }) {
+  const colors = useColors();
+  const n = Math.min(Math.round(count / 28) + 2, 14);
+  return (
+    <Svg width="100%" height={72} viewBox="0 0 300 72">
+      {[0.3, 0.5, 0.72].map((o, i) => (
+        <Path
+          key={i}
+          d={`M 0 ${72 * o} q 40 -9 80 0 t 80 0 t 80 0 t 80 0`}
+          fill="none"
+          stroke={colors.seaglass}
+          strokeWidth={1}
+          opacity={0.28}
+        />
+      ))}
+      {Array.from({ length: n }).map((_, i) => {
+        const x = 14 + (i * 271) / 14;
+        const y = 18 + ((i * 37) % 40);
+        return (
+          <G key={i}>
+            <Rect x={x - 2} y={y - 5} width={4} height={10} rx={1.8} fill={colors.seaglass} opacity={0.8} />
+            <Rect x={x - 1} y={y - 7} width={2} height={3} rx={0.8} fill={colors.wax} />
+          </G>
+        );
+      })}
+    </Svg>
+  );
+}
+
+export default function CityShoreScreen() {
   const { cityId } = useLocalSearchParams<{ cityId: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { token } = useIdentity();
+  const { token, identity } = useIdentity();
   const { data, isLoading } = useCityShore(token, cityId ?? '');
+  const { setTargetCityId } = useCompose();
 
-  const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
+  const isPro = !!identity?.isPro;
+  const count = data?.city.bottleCount ?? 0;
+  const quiet = count < 20;
+
+  const throwHere = () => {
+    if (!isPro) {
+      showAlert(
+        'Pro required',
+        'Targeting a specific city requires a Pro account. Upgrade for $5, once, forever.'
+      );
+      return;
+    }
+    setTargetCityId(cityId ?? null);
+    router.push('/(tabs)/scrawl');
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={[styles.backBtn, { paddingTop: topPad + 12 }]}
-      >
-        <Feather name="arrow-left" size={22} color={colors.mutedForeground} />
-      </TouchableOpacity>
+      <View style={{ paddingTop: insets.top + webTop }}>
+        <TopBar
+          title={data?.city.name ?? ''}
+          onBack={() => router.back()}
+          sub={data ? `${data.city.flag}  |  ${count} bottles adrift` : null}
+        />
+      </View>
 
       {isLoading || !data ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
       ) : (
-        <FlatList
-          data={data.letters}
-          keyExtractor={(l, i) => `${l.nickname}-${i}`}
-          contentContainerStyle={[
-            styles.list,
-            {
-              paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 40,
-              flexGrow: 1,
-            },
-          ]}
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <Text style={styles.flag}>{data.city.flag}</Text>
-              <Text style={[styles.cityName, { color: colors.primary, fontFamily: 'PirataOne_400Regular' }]}>
-                {data.city.name}
-              </Text>
-              <Text style={[styles.country, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-                {data.city.bottleCount} bottles on shore
-              </Text>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            </View>
-          }
-          renderItem={({ item }) => (
-            // A shore shows sample letters washed up here, not bottles you can
-            // claim — the server sends no id and opening is done from the Haul.
-            <View style={[styles.letter, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.letterHead}>
-                <Text style={[styles.letterFrom, { color: colors.primary, fontFamily: 'Cinzel_400Regular' }]}>
-                  {item.nickname}
-                </Text>
-                <Text style={[styles.letterShores, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-                  {item.passOnCount} {item.passOnCount === 1 ? 'shore' : 'shores'}
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingBottom: insets.bottom + webBottom + 60,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.harbourCard}>
+            <LinearGradient
+              colors={[colors.secondary, colors.card]}
+              start={{ x: 0.1, y: 0 }}
+              end={{ x: 0.9, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <Harbour count={count} />
+            <Text style={[styles.harbourNote, { color: colors.mutedForeground }]}>
+              {count > 200
+                ? 'Crowded water. Your bottle competes with hundreds, but someone will find it fast.'
+                : quiet
+                  ? 'Barely anyone here. A bottle thrown into this water gets read carefully.'
+                  : 'Steady current. Good odds of being found within the day.'}
+            </Text>
+          </View>
+
+          <Rule label="Washed up here" />
+          {data.letters.map((l, i) => (
+            <Paper key={`${l.nickname}-${i}`} tint={patina(l.passOnCount)} style={styles.letter}>
+              <View style={styles.letterInner}>
+                <Text style={[styles.letterText, { color: colors.ink }]}>{l.text}</Text>
+                <Text style={[styles.letterMeta, { color: colors.ink }]}>
+                  {l.nickname} · {l.passOnCount} {l.passOnCount === 1 ? 'shore' : 'shores'}
                 </Text>
               </View>
-              <Text
-                style={[styles.letterBody, { color: colors.foreground, fontFamily: 'Spectral_400Regular' }]}
-                numberOfLines={4}
-              >
-                {item.text}
-              </Text>
-            </View>
-          )}
-          ListEmptyComponent={
-            <EmptyState
-              icon="anchor"
-              title="The shore is quiet"
-              subtitle="No bottles have washed up here yet"
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        />
+            </Paper>
+          ))}
+
+          <Text style={[styles.sample, { color: colors.mutedForeground }]}>
+            A sample of what is floating here. You cannot pick which one finds you.
+          </Text>
+
+          <Pressable
+            onPress={throwHere}
+            style={[
+              styles.cta,
+              {
+                backgroundColor: isPro ? colors.primary : colors.secondary,
+                borderColor: colors.primary,
+                borderWidth: isPro ? 0 : 1,
+              },
+            ]}
+          >
+            {!isPro && <Feather name="lock" size={15} color={colors.primary} />}
+            <Text
+              style={[styles.ctaText, { color: isPro ? colors.background : colors.primary }]}
+              numberOfLines={1}
+            >
+              Throw a bottle into {data.city.name}
+            </Text>
+          </Pressable>
+          <Text style={[styles.ctaNote, { color: colors.mutedForeground }]}>
+            {isPro ? 'Pro lets you send to any city.' : 'Sending to another city is a Pro feature.'}
+          </Text>
+        </ScrollView>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  letter: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    gap: 8,
-    marginBottom: 12,
-  },
-  letterHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  letterFrom: { fontSize: 13, letterSpacing: 1 },
-  letterShores: { fontSize: 12, opacity: 0.8 },
-  letterBody: { fontSize: 15, lineHeight: 22 },
   root: { flex: 1 },
-  backBtn: { paddingHorizontal: 20, paddingBottom: 8 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingHorizontal: 20 },
-  header: { marginBottom: 20, gap: 4 },
-  flag: { fontSize: 40, marginBottom: 4 },
-  cityName: { fontSize: 36, letterSpacing: 1 },
-  country: { fontSize: 12, letterSpacing: 1 },
-  divider: { height: 1, marginTop: 16, opacity: 0.4 },
+  harbourCard: { borderRadius: 24, padding: 16, marginBottom: 18, overflow: 'hidden' },
+  harbourNote: { fontSize: 12, lineHeight: 19, marginTop: 6, fontFamily: 'Spectral_400Regular' },
+  letter: { marginBottom: 12 },
+  letterInner: { padding: 18 },
+  letterText: { fontSize: 16, lineHeight: 27, fontFamily: 'IMFellEnglish_400Regular' },
+  letterMeta: { fontSize: 10, marginTop: 10, opacity: 0.45, fontFamily: 'Cinzel_400Regular', letterSpacing: 0.5 },
+  sample: { fontSize: 11, textAlign: 'center', marginBottom: 18, fontFamily: 'Spectral_400Regular' },
+  cta: {
+    height: 50,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  ctaText: { fontSize: 14, fontFamily: 'PirataOne_400Regular', letterSpacing: 0.5 },
+  ctaNote: { fontSize: 11, textAlign: 'center', marginTop: 9, fontFamily: 'Spectral_400Regular' },
 });

@@ -68,6 +68,7 @@ function RootLayoutNav() {
       <Stack.Screen name="fate/[bottleId]" options={{ headerShown: false }} />
       <Stack.Screen name="reply/[bottleId]" options={{ headerShown: false }} />
       <Stack.Screen name="city/[cityId]" options={{ headerShown: false }} />
+      <Stack.Screen name="dive/[cityId]" options={{ headerShown: false, animation: 'fade' }} />
     </Stack>
   );
 }

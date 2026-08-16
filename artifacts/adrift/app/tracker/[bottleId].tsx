@@ -1,26 +1,19 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
   ScrollView,
-  TouchableOpacity,
-  Platform,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Rect, Circle, Line } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { useBottle } from '@/lib/api';
-import { STATE_LABEL } from '@/lib/labels';
-import { LetterView } from '@/components/LetterView';
-
-const MAP_W = 300;
-const MAP_H = 150;
-function projX(lon: number) { return ((lon + 180) / 360) * MAP_W; }
-function projY(lat: number) { return ((90 - lat) / 180) * MAP_H; }
+import { DriftMap } from '@/components/DriftMap';
+import { Paper, TopBar, patina, webBottom, webTop } from '@/components/ui/primitives';
 
 export default function TrackerScreen() {
   const { bottleId } = useLocalSearchParams<{ bottleId: string }>();
@@ -29,137 +22,140 @@ export default function TrackerScreen() {
   const { token } = useIdentity();
   const { data: bottle, isLoading } = useBottle(token, bottleId ?? '');
 
-  const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
+  if (isLoading || !bottle) {
+    return (
+      <View style={[styles.root, styles.centre, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
 
-  const statusColor =
-    !bottle ? colors.mutedForeground
-    : bottle.state === 'lost' ? colors.wax
-    : bottle.passOnCount > 0 || bottle.state === 'opened' ? colors.seaglass
-    : colors.primary;
+  const opened = bottle.state === 'opened';
+  const lost = bottle.state === 'lost';
+  const headline = opened
+    ? 'Someone opened it.'
+    : lost
+      ? 'Lost at sea.'
+      : 'Still drifting.';
+  const blurb = opened
+    ? 'You will never know who - unless they write back.'
+    : lost
+      ? 'It never reached anyone. Most bottles do not.'
+      : `Somewhere in the ${bottle.region}. No telling how long.`;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Nav */}
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={[styles.backBtn, { paddingTop: topPad + 16 }]}
-      >
-        <Feather name="arrow-left" size={22} color={colors.mutedForeground} />
-      </TouchableOpacity>
+      <View style={{ paddingTop: insets.top + webTop }}>
+        <TopBar title="" onBack={() => router.back()} />
+      </View>
 
-      {isLoading || !bottle ? (
-        <View style={styles.center}>
-          <Text style={[styles.loading, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-            Tracking…
-          </Text>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: insets.bottom + webBottom + 60,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.mapCard}>
+          <LinearGradient
+            colors={[colors.secondary, colors.card]}
+            start={{ x: 0.1, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <DriftMap progress={bottle.progress} state={bottle.state} />
         </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 40 },
+
+        <Text
+          style={[
+            styles.headline,
+            { color: opened ? colors.seaglass : lost ? colors.mutedForeground : colors.foreground },
           ]}
-          showsVerticalScrollIndicator={false}
         >
-          {/* Status */}
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusLabel, { color: statusColor, fontFamily: 'Cinzel_400Regular' }]}>
-              {STATE_LABEL[bottle.state]}
+          {headline}
+        </Text>
+        <Text style={[styles.blurb, { color: colors.mutedForeground }]}>{blurb}</Text>
+
+        {bottle.countries.length > 0 && (
+          <View style={[styles.panel, { backgroundColor: colors.card }]}>
+            <Text style={[styles.panelLabel, { color: colors.seaglass }]}>OPENED IN</Text>
+            {bottle.countries.map((c, i) => (
+              <View
+                key={c}
+                style={[
+                  styles.countryRow,
+                  {
+                    borderBottomWidth: i < bottle.countries.length - 1 ? 1 : 0,
+                    borderBottomColor: 'rgba(255,255,255,0.05)',
+                  },
+                ]}
+              >
+                <Text style={[styles.countryName, { color: colors.foreground }]}>{c}</Text>
+                <Text style={[styles.countryOrder, { color: colors.mutedForeground }]}>
+                  {i === 0 ? 'first' : `shore ${i + 1}`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {bottle.passOnCount > 0 && (
+          <View style={[styles.panel, { backgroundColor: colors.card }]}>
+            <Text style={[styles.panelLabel, { color: colors.primary }]}>
+              PASSED ON {bottle.passOnCount} {bottle.passOnCount === 1 ? 'TIME' : 'TIMES'}
+            </Text>
+            <View style={styles.trail}>
+              {Array.from({ length: Math.min(bottle.passOnCount, 10) }).map((_, i, arr) => (
+                <React.Fragment key={i}>
+                  <View
+                    style={[
+                      styles.trailDot,
+                      { backgroundColor: i === 0 ? colors.primary : colors.seaglass },
+                    ]}
+                  />
+                  {i < arr.length - 1 && (
+                    <View style={[styles.trailLine, { backgroundColor: colors.secondary }]} />
+                  )}
+                </React.Fragment>
+              ))}
+            </View>
+            <Text style={[styles.trailNote, { color: colors.mutedForeground }]}>
+              Each reader chose to throw it back in.
             </Text>
           </View>
+        )}
 
-          {/* Mini map */}
-          {bottle.currentLat !== undefined && bottle.currentLon !== undefined && (
-            <View style={styles.mapWrap}>
-              <Svg width={MAP_W} height={MAP_H}>
-                <Rect x={0} y={0} width={MAP_W} height={MAP_H} fill={colors.card} rx={8} />
-                <Line x1={0} y1={MAP_H / 2} x2={MAP_W} y2={MAP_H / 2} stroke={colors.border} strokeWidth={0.5} opacity={0.4} />
-                <Line x1={MAP_W / 2} y1={0} x2={MAP_W / 2} y2={MAP_H} stroke={colors.border} strokeWidth={0.5} opacity={0.4} />
-                <Circle
-                  cx={projX(bottle.currentLon)}
-                  cy={projY(bottle.currentLat)}
-                  r={8}
-                  fill={colors.primary}
-                  opacity={0.9}
-                />
-                <Circle
-                  cx={projX(bottle.currentLon)}
-                  cy={projY(bottle.currentLat)}
-                  r={3}
-                  fill="white"
-                />
-              </Svg>
-              {bottle.region && (
-                <Text style={[styles.oceanLabel, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-                  {bottle.region}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Stats */}
-          <View style={[styles.statsCard, { backgroundColor: colors.card }]}>
-            <Stat icon="wind" label="Drift" value={`${Math.round(bottle.progress * 100)}%`} colors={colors} />
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <Stat icon="repeat" label="Shores" value={`${bottle.passOnCount}`} colors={colors} />
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <Stat icon="globe" label="Countries" value={`${bottle.countries.length}`} colors={colors} />
+        <Paper tint={patina(bottle.passOnCount)} style={{ marginTop: 12 }}>
+          <View style={styles.letterInner}>
+            <Text style={[styles.letter, { color: colors.ink }]}>{bottle.text}</Text>
           </View>
-
-          {/* Letter preview */}
-          <Text style={[styles.sectionLabel, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-            YOUR MESSAGE
-          </Text>
-          <LetterView text={bottle.text} />
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
-function Stat({ icon, label, value, colors }: {
-  icon: string; label: string; value: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={styles.stat}>
-      <Feather name={icon as never} size={16} color={colors.mutedForeground} />
-      <Text style={[styles.statValue, { color: colors.foreground, fontFamily: 'PirataOne_400Regular' }]}>
-        {value}
-      </Text>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-        {label.toUpperCase()}
-      </Text>
+        </Paper>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  backBtn: { paddingHorizontal: 20, paddingBottom: 8 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loading: { fontSize: 16 },
-  scroll: { paddingHorizontal: 20, gap: 16 },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
+  centre: { alignItems: 'center', justifyContent: 'center' },
+  mapCard: { borderRadius: 24, padding: 16, marginBottom: 20, overflow: 'hidden' },
+  headline: { fontSize: 21, textAlign: 'center', fontFamily: 'PirataOne_400Regular' },
+  blurb: {
+    fontSize: 13.5,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 21,
+    fontFamily: 'Spectral_400Regular',
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusLabel: { fontSize: 13, letterSpacing: 1 },
-  mapWrap: { alignItems: 'center', gap: 8 },
-  oceanLabel: { fontSize: 11, letterSpacing: 1.5 },
-  statsCard: {
-    borderRadius: 14,
-    flexDirection: 'row',
-    padding: 16,
-    alignItems: 'center',
-  },
-  stat: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 28 },
-  statLabel: { fontSize: 10, letterSpacing: 0.5 },
-  statDivider: { width: 1, height: 40 },
-  sectionLabel: { fontSize: 11, letterSpacing: 1.5, marginBottom: -4 },
+  panel: { borderRadius: 18, padding: 16, marginTop: 16 },
+  panelLabel: { fontSize: 11, letterSpacing: 1, marginBottom: 10, fontFamily: 'Cinzel_400Regular' },
+  countryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  countryName: { fontSize: 13.5, fontFamily: 'Spectral_400Regular' },
+  countryOrder: { fontSize: 10.5, fontFamily: 'Cinzel_400Regular' },
+  trail: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  trailDot: { width: 8, height: 8, borderRadius: 4 },
+  trailLine: { flex: 1, height: 1 },
+  trailNote: { fontSize: 11.5, marginTop: 8, fontFamily: 'Spectral_400Regular' },
+  letterInner: { padding: 22 },
+  letter: { fontSize: 17, lineHeight: 30, fontFamily: 'IMFellEnglish_400Regular' },
 });

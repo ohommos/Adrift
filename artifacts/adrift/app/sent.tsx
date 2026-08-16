@@ -1,81 +1,88 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withDelay,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 
 export default function SentScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const scale = useSharedValue(0.4);
-  const opacity = useSharedValue(0);
-  const textOp = useSharedValue(0);
+  const [phase, setPhase] = useState(0);
+  const ripple = useRef(new Animated.Value(0)).current;
+  const bob = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    scale.value = withSpring(1, { damping: 12, stiffness: 120 });
-    opacity.value = withTiming(1, { duration: 400 });
-    textOp.value = withDelay(400, withTiming(1, { duration: 500 }));
-  }, []);
+    const t = setTimeout(() => setPhase(1), 1500);
+    Animated.loop(
+      Animated.timing(ripple, { toValue: 1, duration: 2800, easing: Easing.out(Easing.ease), useNativeDriver: true })
+    ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: 1, duration: 1750, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0, duration: 1750, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    ).start();
+    return () => clearTimeout(t);
+  }, [ripple, bob]);
 
-  const bottleStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-  const textStyle = useAnimatedStyle(() => ({ opacity: textOp.value }));
-
-  const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
-  const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0);
+  const scale = ripple.interpolate({ inputRange: [0, 1], outputRange: [0.4, 2.4] });
+  const opacity = ripple.interpolate({ inputRange: [0, 1], outputRange: [0.8, 0] });
+  const translateY = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -6] });
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background, paddingTop: topPad, paddingBottom: bottomPad }]}>
-      <Animated.View style={[styles.bottleWrap, bottleStyle]}>
-        <Text style={styles.bottleEmoji}>🍾</Text>
-      </Animated.View>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={styles.stage}>
+        <Animated.View
+          style={[
+            styles.ripple,
+            { borderColor: colors.seaglass, transform: [{ scale }], opacity },
+          ]}
+        />
+        <Animated.View style={{ transform: [{ translateY }], alignItems: 'center' }}>
+          <View style={[styles.cork, { backgroundColor: colors.wax }]} />
+          <View style={[styles.bottle, { backgroundColor: colors.parchment }]} />
+        </Animated.View>
+      </View>
 
-      <Animated.View style={[styles.textWrap, textStyle]}>
-        <Text style={[styles.title, { color: colors.primary, fontFamily: 'PirataOne_400Regular' }]}>
-          Cast to Sea
+      <Text style={[styles.title, { color: colors.foreground }]}>Sealed and adrift.</Text>
+      {phase === 1 && (
+        <Text style={[styles.body, { color: colors.mutedForeground }]}>
+          It is on the current now. We will tell you if someone opens it - never who.
         </Text>
-        <Text style={[styles.sub, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-          Your bottle drifts now. You'll be told when{'\n'}a stranger opens it — but never who.
-        </Text>
-      </Animated.View>
+      )}
 
-      <TouchableOpacity
-        onPress={() => router.replace('/(tabs)')}
-        activeOpacity={0.8}
-        style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
-      >
-        <Text style={[styles.buttonText, { color: colors.foreground, fontFamily: 'PirataOne_400Regular' }]}>
-          Back to Tides
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.actions}>
+        <Pressable
+          onPress={() => router.replace('/(tabs)')}
+          style={[styles.cta, { backgroundColor: colors.secondary }]}
+        >
+          <Text style={[styles.ctaText, { color: colors.foreground }]}>Track it on the tide</Text>
+        </Pressable>
+        <Pressable onPress={() => router.replace('/(tabs)/chart')} style={styles.linkCta}>
+          <Feather name="globe" size={14} color={colors.seaglass} />
+          <Text style={[styles.linkText, { color: colors.seaglass }]}>See it on the planet</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 28, paddingHorizontal: 32 },
-  bottleWrap: { marginBottom: 8 },
-  bottleEmoji: { fontSize: 80 },
-  textWrap: { alignItems: 'center', gap: 12 },
-  title: { fontSize: 40, letterSpacing: 1 },
-  sub: { fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  button: {
-    paddingHorizontal: 40,
-    paddingVertical: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 12,
+  root: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  stage: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  ripple: { position: 'absolute', width: 88, height: 88, borderRadius: 44, borderWidth: 1 },
+  cork: { width: 8, height: 10, borderRadius: 4 },
+  bottle: { width: 16, height: 36, borderRadius: 8, marginTop: -2 },
+  title: { fontSize: 22, fontFamily: 'PirataOne_400Regular' },
+  body: {
+    fontSize: 13.5,
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 21,
+    fontFamily: 'Spectral_400Regular',
   },
-  buttonText: { fontSize: 20 },
+  actions: { marginTop: 36, alignItems: 'center', gap: 8 },
+  cta: { paddingHorizontal: 24, paddingVertical: 13, borderRadius: 999 },
+  ctaText: { fontSize: 13.5, fontFamily: 'Spectral_400Regular' },
+  linkCta: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
+  linkText: { fontSize: 13, fontFamily: 'Spectral_400Regular' },
 });

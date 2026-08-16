@@ -44,6 +44,7 @@ const blackflag = {
 
   // Domain-specific tokens
   parchment: '#FFF6E4',       // letter paper background
+  paperEdge: '#F0E2C6',       // aged edge, for the paper gradient
   ink: '#14202C',             // letter text
   brass: '#FFC93C',           // explicit alias
   wax: '#FF6B4A',             // explicit alias

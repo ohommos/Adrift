@@ -1,20 +1,35 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 
 interface ComposeContextValue {
   text: string;
   setText: (text: string) => void;
-  clearText: () => void;
+  /** Set when the draft was started from a city shore ("throw a bottle into X"). */
+  targetCityId: string | null;
+  setTargetCityId: (id: string | null) => void;
+  clearDraft: () => void;
 }
 
 const ComposeContext = createContext<ComposeContextValue | null>(null);
 
 export function ComposeProvider({ children }: { children: React.ReactNode }) {
   const [text, setText] = useState('');
-  return (
-    <ComposeContext.Provider value={{ text, setText, clearText: () => setText('') }}>
-      {children}
-    </ComposeContext.Provider>
+  const [targetCityId, setTargetCityId] = useState<string | null>(null);
+
+  const value = useMemo<ComposeContextValue>(
+    () => ({
+      text,
+      setText,
+      targetCityId,
+      setTargetCityId,
+      clearDraft: () => {
+        setText('');
+        setTargetCityId(null);
+      },
+    }),
+    [text, targetCityId]
   );
+
+  return <ComposeContext.Provider value={value}>{children}</ComposeContext.Provider>;
 }
 
 export function useCompose() {

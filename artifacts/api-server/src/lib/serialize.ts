@@ -65,6 +65,8 @@ export async function serializeBottleSummary(bottle: Bottle): Promise<BottleSumm
     countries,
     text: bottle.text,
     createdAt: bottle.createdAt.toISOString(),
+    currentLat: bottle.currentLat,
+    currentLon: bottle.currentLon,
   };
 }
 
@@ -75,8 +77,6 @@ export async function serializeBottleDetail(
   const summary = await serializeBottleSummary(bottle);
   return {
     ...summary,
-    currentLat: bottle.currentLat,
-    currentLon: bottle.currentLon,
     originLat: bottle.originLat,
     originLon: bottle.originLon,
     targetCity: targetCity ? serializeCity(targetCity) : null,

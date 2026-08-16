@@ -1,161 +1,105 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
-import { showAlert } from '@/lib/alert';
 import { useIdentity } from '@/context/IdentityContext';
 import { api } from '@/lib/api';
+import { showAlert } from '@/lib/alert';
+import { CREDITS_PER_REPLY } from '@/lib/limits';
 
 export default function FateScreen() {
-  const { bottleId, kind } = useLocalSearchParams<{ bottleId: string; kind: 'break' | 'pass' }>();
+  const { bottleId, kind } = useLocalSearchParams<{ bottleId: string; kind: string }>();
   const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const { token } = useIdentity();
+  const { token, refreshIdentity } = useIdentity();
   const queryClient = useQueryClient();
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
+  const broke = kind === 'break';
+  const [credits, setCredits] = useState<number | null>(null);
+  const sent = useRef(false);
 
-  const isBreak = kind === 'break';
-  const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
-  const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0);
+  useEffect(() => {
+    if (!token || !bottleId || sent.current) return;
+    sent.current = true;
+    const call = broke ? api.breakBottle : api.passBottle;
+    call(token, bottleId)
+      .then(async (res) => {
+        setCredits(res.credits);
+        queryClient.invalidateQueries({ queryKey: ['inbox'] });
+        await refreshIdentity();
+      })
+      .catch((e: unknown) => {
+        showAlert('Tide turned', e instanceof Error ? e.message : 'Could not decide its fate.');
+        router.replace('/(tabs)/haul');
+      });
+  }, [token, bottleId, broke, queryClient, refreshIdentity]);
 
-  const handleConfirm = async () => {
-    if (!token || !bottleId || loading) return;
-    Haptics.impactAsync(isBreak ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
-    setLoading(true);
-    try {
-      if (isBreak) {
-        await api.breakBottle(token, bottleId);
-      } else {
-        await api.passBottle(token, bottleId);
-      }
-      queryClient.invalidateQueries({ queryKey: ['inbox'] });
-      setDone(true);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Something went wrong.';
-      showAlert('Tide turned', msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (done) {
-    return (
-      <View style={[styles.root, { backgroundColor: colors.background, paddingTop: topPad, paddingBottom: bottomPad }]}>
-        <Text style={[styles.doneEmoji]}>
-          {isBreak ? '💔' : '🌊'}
-        </Text>
-        <Text style={[styles.doneTitle, { color: isBreak ? colors.wax : colors.seaglass, fontFamily: 'PirataOne_400Regular' }]}>
-          {isBreak ? 'Broken' : 'Passed On'}
-        </Text>
-        <Text style={[styles.doneSub, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-          {isBreak
-            ? 'The bottle sinks. Its message fades with the tide.'
-            : 'The bottle drifts on. Another shore awaits.'}
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.replace('/(tabs)/haul')}
-          activeOpacity={0.8}
-          style={[styles.button, { backgroundColor: colors.card, borderColor: colors.border }]}
-        >
-          <Text style={[styles.buttonText, { color: colors.foreground, fontFamily: 'PirataOne_400Regular' }]}>
-            Back to Haul
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const toGo = credits === null ? null : Math.max(0, CREDITS_PER_REPLY - credits);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background, paddingTop: topPad, paddingBottom: bottomPad }]}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Feather name="arrow-left" size={22} color={colors.mutedForeground} />
-      </TouchableOpacity>
-
-      <View style={styles.body}>
-        <Text style={[styles.icon]}>
-          {isBreak ? '💔' : '🌊'}
-        </Text>
-
-        <Text style={[styles.title, { color: isBreak ? colors.wax : colors.seaglass, fontFamily: 'PirataOne_400Regular' }]}>
-          {isBreak ? 'Break It' : 'Pass It On'}
-        </Text>
-
-        <Text style={[styles.desc, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-          {isBreak
-            ? "The message will be lost. The sender will know only that their bottle was broken — nothing more."
-            : "The bottle continues its drift. Another stranger will find it on a different shore."}
-        </Text>
-
-        <TouchableOpacity
-          onPress={handleConfirm}
-          disabled={loading}
-          activeOpacity={0.8}
-          style={[
-            styles.confirmBtn,
-            { backgroundColor: isBreak ? colors.wax : colors.seaglass },
-          ]}
-        >
-          {loading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={[styles.confirmText, { color: 'white', fontFamily: 'PirataOne_400Regular' }]}>
-              {isBreak ? 'Break the Bottle' : 'Set It Adrift'}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.6}>
-          <Text style={[styles.cancelText, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-            Cancel
-          </Text>
-        </TouchableOpacity>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={styles.icon}>
+        <Feather
+          name={broke ? 'slash' : 'repeat'}
+          size={30}
+          color={broke ? colors.wax : colors.seaglass}
+        />
       </View>
+
+      <Text style={[styles.title, { color: colors.foreground }]}>
+        {broke ? 'It stops with you.' : 'Back in the water.'}
+      </Text>
+      <Text style={[styles.body, { color: colors.mutedForeground }]}>
+        {broke
+          ? 'Nobody is told you did this - not the sender, not anyone.'
+          : 'It is drifting toward its next shore. The sender sees the count go up, not your name.'}
+      </Text>
+
+      {credits === null ? (
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 26 }} />
+      ) : (
+        <>
+          <View style={styles.pips}>
+            {[0, 1, 2].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.pip,
+                  { backgroundColor: i < credits ? colors.primary : colors.secondary },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={[styles.creditNote, { color: colors.primary }]}>
+            {toGo === 0 ? 'A reply is yours' : `${toGo} more for a reply`}
+          </Text>
+        </>
+      )}
+
+      <Pressable
+        onPress={() => router.replace('/(tabs)/haul')}
+        style={[styles.cta, { backgroundColor: colors.secondary }]}
+      >
+        <Text style={[styles.ctaText, { color: colors.foreground }]}>Back to inbox</Text>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  backBtn: { paddingHorizontal: 20, paddingBottom: 8 },
+  root: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  icon: { width: 128, height: 128, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 21, textAlign: 'center', fontFamily: 'PirataOne_400Regular' },
   body: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 20,
+    fontSize: 13.5,
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 21,
+    fontFamily: 'Spectral_400Regular',
   },
-  icon: { fontSize: 72 },
-  title: { fontSize: 38, letterSpacing: 1, textAlign: 'center' },
-  desc: { fontSize: 16, lineHeight: 24, textAlign: 'center' },
-  confirmBtn: {
-    width: '100%',
-    height: 56,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmText: { fontSize: 22, letterSpacing: 0.5 },
-  cancelText: { fontSize: 15, marginTop: 4 },
-  doneEmoji: { fontSize: 80, textAlign: 'center' },
-  doneTitle: { fontSize: 40, letterSpacing: 1, textAlign: 'center' },
-  doneSub: { fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  button: {
-    paddingHorizontal: 36,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  buttonText: { fontSize: 20 },
+  pips: { flexDirection: 'row', gap: 8, marginTop: 26 },
+  pip: { width: 9, height: 9, borderRadius: 5 },
+  creditNote: { fontSize: 12.5, marginTop: 8, fontFamily: 'Cinzel_400Regular' },
+  cta: { marginTop: 32, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 999 },
+  ctaText: { fontSize: 13.5, fontFamily: 'Spectral_400Regular' },
 });

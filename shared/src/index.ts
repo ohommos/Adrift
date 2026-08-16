@@ -51,11 +51,13 @@ export interface BottleSummary {
   countries: string[];
   text: string;
   createdAt: string;
+  // Where the bottle is now. Only ever returned for bottles the caller owns
+  // or has already opened, so this reveals nothing about anyone else.
+  currentLat: number;
+  currentLon: number;
 }
 
 export interface BottleDetail extends BottleSummary {
-  currentLat: number;
-  currentLon: number;
   originLat: number;
   originLon: number;
   targetCity: City | null;

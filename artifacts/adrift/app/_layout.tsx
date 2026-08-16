@@ -9,12 +9,12 @@ import { PirataOne_400Regular } from '@expo-google-fonts/pirata-one';
 import { Cinzel_400Regular, Cinzel_700Bold } from '@expo-google-fonts/cinzel';
 import {
   Spectral_400Regular,
-  Spectral_400Italic,
+  Spectral_400Regular_Italic,
   Spectral_600SemiBold,
 } from '@expo-google-fonts/spectral';
 import {
   IMFellEnglish_400Regular,
-  IMFellEnglish_400Italic,
+  IMFellEnglish_400Regular_Italic,
 } from '@expo-google-fonts/im-fell-english';
 import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -28,6 +28,20 @@ const queryClient = new QueryClient();
 function RootLayoutNav() {
   const { isLoading, hasIdentity } = useIdentity();
   const segments = useSegments();
+
+  // Hold the splash until the stored session has been resolved. Hiding it as
+  // soon as the fonts land shows a frame of the empty Tides tab before the
+  // redirect to onboarding runs.
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync().catch(() => {});
+      return;
+    }
+    // Safety net: never let a stuck session lookup strand the user on the
+    // splash screen.
+    const timer = setTimeout(() => SplashScreen.hideAsync().catch(() => {}), 8000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -64,18 +78,15 @@ export default function RootLayout() {
     Cinzel_400Regular,
     Cinzel_700Bold,
     Spectral_400Regular,
-    Spectral_400Italic,
+    Spectral_400Regular_Italic,
     Spectral_600SemiBold,
     IMFellEnglish_400Regular,
-    IMFellEnglish_400Italic,
+    IMFellEnglish_400Regular_Italic,
   });
 
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
-
+  // The splash is hidden by RootLayoutNav once the session has resolved too,
+  // so it stays up across the whole cold start rather than lifting here and
+  // exposing a frame of the wrong screen.
   if (!fontsLoaded && !fontError) return null;
 
   return (

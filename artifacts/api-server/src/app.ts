@@ -6,6 +6,10 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// The server runs behind the platform proxy, so the socket address is the
+// proxy's. Without this, req.ip is never the client's.
+app.set("trust proxy", true);
+
 app.use(
   pinoHttp({
     logger,

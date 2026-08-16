@@ -81,6 +81,10 @@ export function isAuthError(e: unknown): boolean {
   return e instanceof ApiError && (e.status === 401 || e.status === 403);
 }
 
+// No request may hang indefinitely — the cold-start path waits on one before
+// it can decide whether to show onboarding or the app.
+const REQUEST_TIMEOUT_MS = 12_000;
+
 async function apiFetch<T>(
   path: string,
   options?: RequestInit & { token?: string | null }
@@ -88,7 +92,29 @@ async function apiFetch<T>(
   const { token, ...rest } = options ?? {};
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(`${getBase()}/api${path}`, { ...rest, headers });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${getBase()}/api${path}`, {
+      ...rest,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    throw new ApiError(
+      0,
+      controller.signal.aborted
+        ? 'The sea is quiet — the request timed out.'
+        : e instanceof Error
+          ? e.message
+          : 'Could not reach the sea.'
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const msg = (body as { error?: string; message?: string }).error
@@ -109,6 +135,11 @@ export const api = {
     }),
 
   getMe: (token: string) => apiFetch<SerializedIdentity>('/identity/me', { token }),
+
+  checkNickname: (nickname: string) =>
+    apiFetch<{ available: boolean; reason?: string }>(
+      `/identity/available?nickname=${encodeURIComponent(nickname)}`
+    ),
 
   getCities: (token?: string | null) => apiFetch<City[]>('/cities', { token }),
 

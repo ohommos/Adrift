@@ -3,6 +3,7 @@ import type { CityShoreLetter } from "@adrift/shared";
 import { db, cityTable, bottleTable, userTable } from "@workspace/db";
 import { eq, and, or, inArray, isNotNull, desc, sql } from "drizzle-orm";
 import { serializeCity } from "../lib/serialize";
+import { routeParam } from "../lib/params";
 
 export const citiesRouter = Router();
 
@@ -36,9 +37,12 @@ citiesRouter.get("/cities/:id/shore", async (req, res) => {
   const [city] = await db
     .select()
     .from(cityTable)
-    .where(eq(cityTable.id, req.params.id))
+    .where(eq(cityTable.id, routeParam(req, "id")))
     .limit(1);
-  if (!city) return res.status(404).json({ error: "Not found" });
+  if (!city) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
 
   const bottles = await db
     .select({

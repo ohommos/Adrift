@@ -3,6 +3,7 @@ import { db, notificationTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { serializeNotification } from "../lib/serialize";
+import { routeParam } from "../lib/params";
 
 export const notificationsRouter = Router();
 
@@ -20,11 +21,12 @@ notificationsRouter.post("/notifications/:id/read", requireAuth, async (req, res
   const [notification] = await db
     .select()
     .from(notificationTable)
-    .where(eq(notificationTable.id, req.params.id))
+    .where(eq(notificationTable.id, routeParam(req, "id")))
     .limit(1);
 
   if (!notification || notification.userId !== req.user!.id) {
-    return res.status(404).json({ error: "Not found" });
+    res.status(404).json({ error: "Not found" });
+    return;
   }
 
   const [updated] = await db

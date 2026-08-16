@@ -18,6 +18,7 @@ import {
   replyToBottle,
   resolveFate,
 } from "../services/bottleActions";
+import { routeParam } from "../lib/params";
 
 export const bottlesRouter = Router();
 
@@ -57,9 +58,12 @@ bottlesRouter.get("/bottles/:id", requireAuth, async (req, res) => {
   const [row] = await db
     .select()
     .from(bottleTable)
-    .where(eq(bottleTable.id, req.params.id))
+    .where(eq(bottleTable.id, routeParam(req, "id")))
     .limit(1);
-  if (!row) return res.status(404).json({ error: "Not found" });
+  if (!row) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
 
   const isAuthor = row.authorId === req.user!.id;
   if (!isAuthor) {
@@ -73,7 +77,10 @@ bottlesRouter.get("/bottles/:id", requireAuth, async (req, res) => {
         )
       )
       .limit(1);
-    if (!interaction) return res.status(403).json({ error: "Not visible to you" });
+    if (!interaction) {
+      res.status(403).json({ error: "Not visible to you" });
+      return;
+    }
   }
 
   let targetCity = null;
@@ -91,7 +98,7 @@ bottlesRouter.get("/bottles/:id", requireAuth, async (req, res) => {
 
 bottlesRouter.post("/bottles/:id/open", requireAuth, async (req, res) => {
   try {
-    res.json(await openBottle(req.params.id, req.user!.id));
+    res.json(await openBottle(routeParam(req, "id"), req.user!.id));
   } catch (e) {
     handleError(e, res);
   }
@@ -99,7 +106,7 @@ bottlesRouter.post("/bottles/:id/open", requireAuth, async (req, res) => {
 
 async function handleFate(kind: ReaderActionKind, req: Request, res: Response) {
   try {
-    const credits = await resolveFate(req.params.id, req.user!.id, kind);
+    const credits = await resolveFate(routeParam(req, "id"), req.user!.id, kind);
     res.json({ kind, credits } satisfies ReaderActionResponse);
   } catch (e) {
     handleError(e, res);
@@ -116,7 +123,7 @@ bottlesRouter.post("/bottles/:id/pass", requireAuth, (req, res) =>
 bottlesRouter.post("/bottles/:id/reply", requireAuth, async (req, res) => {
   try {
     const body = req.body as Partial<ReplyRequest>;
-    const result = await replyToBottle(req.params.id, req.user!.id, body.text ?? "");
+    const result = await replyToBottle(routeParam(req, "id"), req.user!.id, body.text ?? "");
     res.status(201).json(result);
   } catch (e) {
     handleError(e, res);
@@ -130,7 +137,7 @@ bottlesRouter.get("/bottles/:id/replies", requireAuth, async (req, res) => {
     .from(replyTable)
     .where(
       and(
-        eq(replyTable.bottleId, req.params.id),
+        eq(replyTable.bottleId, routeParam(req, "id")),
         or(eq(replyTable.fromUserId, user.id), eq(replyTable.toUserId, user.id))
       )
     )

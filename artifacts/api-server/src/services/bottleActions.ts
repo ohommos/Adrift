@@ -17,6 +17,7 @@ import {
 import { eq, and, or, ne, inArray, notInArray, isNotNull, sql, desc, asc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { randomOceanPoint } from "../lib/geo";
+import { UNKNOWN_COUNTRY } from "../lib/geoip";
 import { DIALS } from "../engine/dials";
 import { notify } from "../engine/notify";
 
@@ -248,7 +249,13 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
 
   if (wasFirstOpen) {
     await notify(bottle.authorId, bottle.id, "opened", "Someone opened your bottle.");
-  } else if (bottle.scope === "global" && !priorCountries.includes(readerCountry)) {
+  } else if (
+    bottle.scope === "global" &&
+    // An unresolved country is not a place — telling the author their bottle
+    // was "Opened in Unknown." is worse than staying quiet about this open.
+    readerCountry !== UNKNOWN_COUNTRY &&
+    !priorCountries.includes(readerCountry)
+  ) {
     await notify(
       bottle.authorId,
       bottle.id,

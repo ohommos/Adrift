@@ -6,7 +6,7 @@ import { BlurView } from 'expo-blur';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Tabs } from 'expo-router';
 import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // NativeTabs (iOS 26+) with liquid glass — system appearance, no custom brand colors.
@@ -47,12 +47,12 @@ function ClassicTabLayout() {
   const safeAreaInsets = useSafeAreaInsets();
 
   function tabIcon(
-    sfName: string,
-    featherName: string,
+    sfName: SFSymbol,
+    featherName: React.ComponentProps<typeof Feather>['name'],
     color: string
   ) {
     if (isIOS) return <SymbolView name={sfName} tintColor={color} size={24} />;
-    return <Feather name={featherName as never} size={22} color={color} />;
+    return <Feather name={featherName} size={22} color={color} />;
   }
 
   return (

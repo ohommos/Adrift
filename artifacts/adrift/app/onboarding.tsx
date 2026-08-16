@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   ScrollView,
 } from 'react-native';
-import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
@@ -39,8 +38,36 @@ export default function OnboardingScreen() {
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [taken, setTaken] = useState<string | null>(null);
 
-  const canCast = nickname.trim().length >= 2 && nickname.trim().length <= 24;
+  const trimmed = nickname.trim();
+  const wellFormed = trimmed.length >= 2 && trimmed.length <= 24;
+  const canCast = wellFormed && taken !== trimmed.toLowerCase();
+
+  // Tell the user their name is gone while they are still typing, rather than
+  // only after they commit to it.
+  useEffect(() => {
+    if (!wellFormed) {
+      setTaken(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const { available } = await api.checkNickname(trimmed);
+        if (!cancelled) setTaken(available ? null : trimmed.toLowerCase());
+      } catch {
+        // Availability is a courtesy — signup still reports the real answer.
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmed, wellFormed]);
+
+  const notice =
+    error ?? (taken === trimmed.toLowerCase() ? 'That name is already taken — try another' : null);
 
   const handleCastOff = async () => {
     if (!canCast || loading) return;
@@ -49,7 +76,7 @@ export default function OnboardingScreen() {
     setError(null);
     try {
       const deviceId = await getDeviceId();
-      const { token, identity } = await api.createIdentity(deviceId, nickname.trim());
+      const { token, identity } = await api.createIdentity(deviceId, trimmed);
       await setIdentity(identity, token);
       // Navigation is handled by _layout.tsx watching hasIdentity
     } catch (e: unknown) {
@@ -97,7 +124,11 @@ export default function OnboardingScreen() {
               styles.input,
               {
                 backgroundColor: colors.card,
-                borderColor: canCast ? colors.primary : colors.border,
+                borderColor: notice
+                  ? colors.destructive
+                  : canCast
+                    ? colors.primary
+                    : colors.border,
                 color: colors.foreground,
                 fontFamily: 'Spectral_400Regular',
               },
@@ -118,9 +149,9 @@ export default function OnboardingScreen() {
           <Text style={[styles.hint, { color: colors.mutedForeground }]}>
             2–24 characters · this is how strangers know you
           </Text>
-          {error && (
+          {notice && (
             <Text style={[styles.error, { color: colors.destructive }]}>
-              {error}
+              {notice}
             </Text>
           )}
         </View>

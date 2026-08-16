@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -29,19 +30,25 @@ export const cityTable = pgTable("City", {
 // ---------------------------------------------------------------------------
 // User
 // ---------------------------------------------------------------------------
-export const userTable = pgTable("User", {
-  id: id(),
-  deviceId: text("deviceId").unique(),
-  token: text("token").notNull().unique(),
-  nickname: text("nickname").notNull(),
-  flag: text("flag").notNull(),
-  homeCountry: text("homeCountry").notNull().default("Unknown"),
-  isPro: boolean("isPro").notNull().default(false),
-  credits: integer("credits").notNull().default(0),
-  usedFreeReply: boolean("usedFreeReply").notNull().default(false),
-  isBot: boolean("isBot").notNull().default(false),
-  createdAt: createdAt(),
-});
+export const userTable = pgTable(
+  "User",
+  {
+    id: id(),
+    deviceId: text("deviceId").unique(),
+    token: text("token").notNull().unique(),
+    nickname: text("nickname").notNull(),
+    flag: text("flag").notNull(),
+    homeCountry: text("homeCountry").notNull().default("Unknown"),
+    isPro: boolean("isPro").notNull().default(false),
+    credits: integer("credits").notNull().default(0),
+    usedFreeReply: boolean("usedFreeReply").notNull().default(false),
+    isBot: boolean("isBot").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  // Nicknames are claimed case-insensitively. Enforced in the database so a
+  // check-then-insert race can't hand the same name to two signups.
+  (t) => [uniqueIndex("User_nickname_lower_key").on(sql`lower(${t.nickname})`)]
+);
 
 // ---------------------------------------------------------------------------
 // Bottle

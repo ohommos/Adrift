@@ -15,7 +15,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
   if (!token) {
-    return res.status(401).json({ error: "Missing bearer token" });
+    res.status(401).json({ error: "Missing bearer token" });
+    return;
   }
   const [user] = await db
     .select()
@@ -23,7 +24,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     .where(eq(userTable.token, token))
     .limit(1);
   if (!user) {
-    return res.status(401).json({ error: "Invalid token" });
+    res.status(401).json({ error: "Invalid token" });
+    return;
   }
   req.user = user;
   next();

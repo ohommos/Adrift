@@ -7,9 +7,14 @@ Full product/design spec: [`docs/adrift-spec.md`](docs/adrift-spec.md).
 
 Monorepo:
 
-- `server/` — Express + Prisma (SQLite) API and the drift economy engine
-- `app/` — Expo (React Native) mobile app
+- `artifacts/api-server/` — Express + Drizzle (PostgreSQL) API and the drift
+  economy engine
+- `artifacts/adrift/` — Expo (React Native) client
 - `shared/` — types shared between both
+
+> The "Run it" steps below describe the original Prisma/SQLite backend under
+> `server/` and `app/`, which has been superseded. For the current stack see
+> [`replit.md`](replit.md).
 
 ## Run it
 
@@ -50,7 +55,9 @@ npm run app:start
 ```
 
 Scan the QR code with the **Expo Go** app on your phone (iOS or Android).
-First launch asks for a nickname and a home city — after that you're in.
+First launch asks for a nickname only — after that you're in. Your country is
+derived from the request IP in the background, and stays "Unknown" when it
+can't be resolved (which is normal on a LAN or a private network).
 
 ## What's implemented
 

@@ -6,6 +6,7 @@ import type {
 } from "@adrift/shared";
 import type { Bottle, City, Notification, User } from "@workspace/db";
 import { nearestOceanName } from "./geo";
+import { UNKNOWN_COUNTRY } from "./geoip";
 import { db, bottleOpenTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 
@@ -42,6 +43,8 @@ export async function bottleCountries(bottleId: string): Promise<string[]> {
   const seen = new Set<string>();
   const ordered: string[] = [];
   for (const o of opens) {
+    // Unresolved countries are not places to list on a bottle's journey.
+    if (o.country === UNKNOWN_COUNTRY) continue;
     if (!seen.has(o.country)) {
       seen.add(o.country);
       ordered.push(o.country);

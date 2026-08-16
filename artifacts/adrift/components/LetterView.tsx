@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   meta: {
-    fontFamily: 'IMFellEnglish_400Italic',
+    fontFamily: 'IMFellEnglish_400Regular_Italic',
     fontSize: 12,
     opacity: 0.6,
     marginBottom: 16,

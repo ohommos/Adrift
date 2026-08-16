@@ -1,11 +1,12 @@
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { Router } from "express";
 import type { IdentityCreateRequest, IdentityCreateResponse } from "@adrift/shared";
 import { db, userTable } from "@workspace/db";
-import { eq, ilike } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { serializeIdentity } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
-import { randomUUID } from "crypto";
+import { logger } from "../lib/logger";
+import { clientIp, detectCountry, UNKNOWN_COUNTRY } from "../lib/geoip";
 
 export const identityRouter = Router();
 
@@ -15,36 +16,87 @@ function randomFlag() {
   return FLAGS[Math.floor(Math.random() * FLAGS.length)];
 }
 
-async function detectCountry(ip: string): Promise<string> {
-  try {
-    // Strip IPv6-mapped IPv4 prefix
-    const cleanIp = ip.replace(/^::ffff:/, "");
-    if (!cleanIp || cleanIp === "::1" || cleanIp.startsWith("127.") || cleanIp.startsWith("10.") || cleanIp.startsWith("172.") || cleanIp.startsWith("192.168.")) {
-      return "Unknown";
-    }
-    const res = await fetch(`http://ip-api.com/json/${cleanIp}?fields=country,status`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    const data = await res.json() as { status: string; country?: string };
-    return data.status === "success" && data.country ? data.country : "Unknown";
-  } catch {
-    return "Unknown";
+const NICKNAME_MIN = 2;
+const NICKNAME_MAX = 24;
+
+function validateNickname(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof raw !== "string") return { ok: false, error: "nickname is required" };
+  const trimmed = raw.trim();
+  if (trimmed.length < NICKNAME_MIN || trimmed.length > NICKNAME_MAX) {
+    return { ok: false, error: `nickname must be ${NICKNAME_MIN}–${NICKNAME_MAX} characters` };
   }
+  return { ok: true, value: trimmed };
 }
+
+/**
+ * Case-insensitive exact match. Deliberately not `ilike`: the value is a
+ * pattern there, so `%` matches every existing name and `_` matches any
+ * single character — the screen's own placeholder suggests a nickname with
+ * an underscore in it.
+ */
+async function findByNickname(nickname: string) {
+  const [row] = await db
+    .select({ id: userTable.id })
+    .from(userTable)
+    .where(sql`lower(${userTable.nickname}) = lower(${nickname})`)
+    .limit(1);
+  return row ?? null;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: string }).code === "23505"
+  );
+}
+
+/**
+ * Resolve the country in the background and patch the row once it lands.
+ * Signup must not wait on a third-party lookup, and must not fail when that
+ * lookup is unreachable.
+ */
+function resolveCountryInBackground(userId: string, ip: string) {
+  void detectCountry(ip)
+    .then(async (country) => {
+      if (country === UNKNOWN_COUNTRY) return;
+      await db
+        .update(userTable)
+        .set({ homeCountry: country })
+        .where(eq(userTable.id, userId));
+    })
+    .catch((err) => logger.debug({ err }, "[identity] country backfill failed"));
+}
+
+identityRouter.get("/identity/available", async (req, res) => {
+  const raw = req.query["nickname"];
+  const check = validateNickname(Array.isArray(raw) ? raw[0] : raw);
+  if (!check.ok) {
+    res.json({ available: false, reason: check.error });
+    return;
+  }
+  const taken = await findByNickname(check.value);
+  res.json({ available: !taken, ...(taken ? { reason: "That name is already taken" } : {}) });
+});
 
 identityRouter.post("/identity", async (req, res) => {
   const body = req.body as Partial<IdentityCreateRequest>;
-  const { deviceId, nickname } = body;
+  const { deviceId } = body;
 
-  if (!deviceId || !nickname) {
-    return res.status(400).json({ error: "deviceId and nickname are required" });
+  if (!deviceId) {
+    res.status(400).json({ error: "deviceId and nickname are required" });
+    return;
   }
-  const trimmed = nickname.trim();
-  if (trimmed.length < 2 || trimmed.length > 24) {
-    return res.status(400).json({ error: "nickname must be 2–24 characters" });
+  const check = validateNickname(body.nickname);
+  if (!check.ok) {
+    res.status(400).json({ error: check.error });
+    return;
   }
+  const nickname = check.value;
 
-  // Return existing identity for this device
+  // Return the existing identity for this device. This is what lets a signup
+  // that created the account but failed before the client stored the token be
+  // recovered instead of stranding the nickname.
   const [existing] = await db
     .select()
     .from(userTable)
@@ -56,41 +108,45 @@ identityRouter.post("/identity", async (req, res) => {
       token: existing.token,
       identity: serializeIdentity(existing),
     };
-    return res.json(response);
+    res.json(response);
+    return;
   }
 
-  // Reject if nickname is already taken (case-insensitive)
-  const [takenBy] = await db
-    .select({ id: userTable.id })
-    .from(userTable)
-    .where(ilike(userTable.nickname, trimmed))
-    .limit(1);
-  if (takenBy) {
-    return res.status(409).json({ error: "That name is already taken — try another" });
+  if (await findByNickname(nickname)) {
+    res.status(409).json({ error: "That name is already taken — try another" });
+    return;
   }
 
-  // Detect country from the request IP
-  const rawIp =
-    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
-    req.ip ??
-    "";
-  const homeCountry = await detectCountry(rawIp);
+  const ip = clientIp(req.headers as Record<string, unknown>, req.ip);
 
-  const [user] = await db
-    .insert(userTable)
-    .values({
-      id: randomUUID(),
-      deviceId,
-      token: randomBytes(24).toString("hex"),
-      nickname: trimmed,
-      flag: randomFlag(),
-      homeCountry,
-    })
-    .returning();
+  let user;
+  try {
+    [user] = await db
+      .insert(userTable)
+      .values({
+        id: randomUUID(),
+        deviceId,
+        token: randomBytes(24).toString("hex"),
+        nickname,
+        flag: randomFlag(),
+        homeCountry: UNKNOWN_COUNTRY,
+      })
+      .returning();
+  } catch (err) {
+    // Lost the race against a concurrent signup for the same name. The unique
+    // index is the authority; the check above is only a friendlier fast path.
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: "That name is already taken — try another" });
+      return;
+    }
+    throw err;
+  }
+
+  resolveCountryInBackground(user!.id, ip);
 
   const response: IdentityCreateResponse = {
-    token: user.token,
-    identity: serializeIdentity(user),
+    token: user!.token,
+    identity: serializeIdentity(user!),
   };
   res.status(201).json(response);
 });

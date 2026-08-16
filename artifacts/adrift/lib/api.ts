@@ -6,66 +6,40 @@ function getBase() {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface City {
-  id: string;
-  name: string;
-  flag: string;
-  lat: number;
-  lon: number;
-  bottleCount: number;
-}
+// Types come from @adrift/shared — the same definitions the server serialises
+// against — so a drift between client and server is a compile error rather
+// than an `undefined` on screen. Imported as types only: the declarations are
+// erased at build time, so Metro never has to resolve the workspace package.
+import type {
+  AppNotification,
+  BottleDetail,
+  BottleSummary,
+  City,
+  CityShore,
+  Identity,
+  IdentityCreateResponse,
+  InboxItem,
+  ReaderActionResponse,
+  Reply,
+  ReplyResponse,
+  ProUnlockResponse,
+} from '@adrift/shared';
 
-export interface SerializedIdentity {
-  id: string;
-  nickname: string;
-  flag: string;
-  homeCountry: string;
-  isPro: boolean;
-  credits: number;
-  usedFreeReply: boolean;
-}
+export type {
+  AppNotification,
+  BottleDetail,
+  BottleSummary,
+  City,
+  CityShore,
+  Identity,
+  InboxItem,
+  ReaderActionResponse,
+  Reply,
+  ReplyResponse,
+};
 
-export interface Bottle {
-  id: string;
-  text: string;
-  authorId: string;
-  status: string;
-  scope: 'global' | 'city';
-  targetCityId?: string;
-  targetCity?: City;
-  currentLat?: number;
-  currentLon?: number;
-  currentOcean?: string;
-  driftDays: number;
-  countriesVisited: number;
-  openCount: number;
-  breakVotes: number;
-  createdAt: string;
-}
-
-export interface Reply {
-  id: string;
-  bottleId: string;
-  authorId: string;
-  text: string;
-  createdAt: string;
-}
-
-export interface Notification {
-  id: string;
-  userId: string;
-  kind: string;
-  bottleId?: string;
-  fromFlag?: string;
-  country?: string;
-  read: boolean;
-  createdAt: string;
-}
-
-export interface CityShore {
-  city: City;
-  bottles: Bottle[];
-}
+/** Kept as an alias so existing call sites keep reading naturally. */
+export type SerializedIdentity = Identity;
 
 // ─── Fetch helper ─────────────────────────────────────────────────────────────
 
@@ -129,12 +103,12 @@ async function apiFetch<T>(
 
 export const api = {
   createIdentity: (deviceId: string, nickname: string) =>
-    apiFetch<{ token: string; identity: SerializedIdentity }>('/identity', {
+    apiFetch<IdentityCreateResponse>('/identity', {
       method: 'POST',
       body: JSON.stringify({ deviceId, nickname }),
     }),
 
-  getMe: (token: string) => apiFetch<SerializedIdentity>('/identity/me', { token }),
+  getMe: (token: string) => apiFetch<Identity>('/identity/me', { token }),
 
   checkNickname: (nickname: string) =>
     apiFetch<{ available: boolean; reason?: string }>(
@@ -146,12 +120,12 @@ export const api = {
   getCityShore: (cityId: string, token?: string | null) =>
     apiFetch<CityShore>(`/cities/${cityId}/shore`, { token }),
 
-  getMyBottles: (token: string) => apiFetch<Bottle[]>('/bottles/mine', { token }),
+  getMyBottles: (token: string) => apiFetch<BottleSummary[]>('/bottles/mine', { token }),
 
   // `scope` is required by the server and has no default — omitting it makes
   // every cast fail with 400.
   createBottle: (token: string, text: string, targetCityId?: string) =>
-    apiFetch<Bottle>('/bottles', {
+    apiFetch<BottleSummary>('/bottles', {
       method: 'POST',
       token,
       body: JSON.stringify(
@@ -161,25 +135,26 @@ export const api = {
       ),
     }),
 
-  getInbox: (token: string) => apiFetch<Bottle[]>('/inbox', { token }),
+  getInbox: (token: string) => apiFetch<InboxItem[]>('/inbox', { token }),
 
   getBottle: (token: string, bottleId: string) =>
-    apiFetch<Bottle>(`/bottles/${bottleId}`, { token }),
+    apiFetch<BottleDetail>(`/bottles/${bottleId}`, { token }),
 
+  // Returns the revealed item itself — there is no wrapper object.
   openBottle: (token: string, bottleId: string) =>
-    apiFetch<{ bottle: Bottle; alreadyOpen: boolean }>(`/bottles/${bottleId}/open`, {
+    apiFetch<InboxItem>(`/bottles/${bottleId}/open`, {
       method: 'POST',
       token,
     }),
 
   breakBottle: (token: string, bottleId: string) =>
-    apiFetch<{ fate: string }>(`/bottles/${bottleId}/break`, { method: 'POST', token }),
+    apiFetch<ReaderActionResponse>(`/bottles/${bottleId}/break`, { method: 'POST', token }),
 
   passBottle: (token: string, bottleId: string) =>
-    apiFetch<{ fate: string }>(`/bottles/${bottleId}/pass`, { method: 'POST', token }),
+    apiFetch<ReaderActionResponse>(`/bottles/${bottleId}/pass`, { method: 'POST', token }),
 
   replyToBottle: (token: string, bottleId: string, text: string) =>
-    apiFetch<{ reply: Reply }>(`/bottles/${bottleId}/reply`, {
+    apiFetch<ReplyResponse>(`/bottles/${bottleId}/reply`, {
       method: 'POST',
       token,
       body: JSON.stringify({ text }),
@@ -189,13 +164,13 @@ export const api = {
     apiFetch<Reply[]>(`/bottles/${bottleId}/replies`, { token }),
 
   unlockPro: (token: string) =>
-    apiFetch<SerializedIdentity>('/pro/unlock', { method: 'POST', token }),
+    apiFetch<ProUnlockResponse>('/pro/unlock', { method: 'POST', token }),
 
   getNotifications: (token: string) =>
-    apiFetch<Notification[]>('/notifications', { token }),
+    apiFetch<AppNotification[]>('/notifications', { token }),
 
   markRead: (token: string, notifId: string) =>
-    apiFetch<Notification>(`/notifications/${notifId}/read`, { method: 'POST', token }),
+    apiFetch<AppNotification>(`/notifications/${notifId}/read`, { method: 'POST', token }),
 };
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────

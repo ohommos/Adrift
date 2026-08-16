@@ -167,6 +167,9 @@ importers:
 
   artifacts/adrift:
     dependencies:
+      '@adrift/shared':
+        specifier: workspace:*
+        version: link:../../shared
       '@expo-google-fonts/cinzel':
         specifier: ^0.4.2
         version: 0.4.2

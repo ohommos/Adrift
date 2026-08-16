@@ -4,12 +4,13 @@ import { useColors } from '@/hooks/useColors';
 
 interface LetterViewProps {
   text: string;
-  driftDays?: number;
+  /** How many shores the bottle has reached — the server's pass-on count. */
+  shores?: number;
   ocean?: string;
   scrollable?: boolean;
 }
 
-export function LetterView({ text, driftDays, ocean, scrollable = false }: LetterViewProps) {
+export function LetterView({ text, shores, ocean, scrollable = false }: LetterViewProps) {
   const colors = useColors();
 
   const content = (
@@ -26,9 +27,13 @@ export function LetterView({ text, driftDays, ocean, scrollable = false }: Lette
       <View style={[styles.rule, { backgroundColor: colors.ink }]} />
 
       {/* Voyage note */}
-      {(driftDays !== undefined || ocean) && (
+      {(shores !== undefined || ocean) && (
         <Text style={[styles.meta, { color: colors.ink }]}>
-          {[ocean, driftDays !== undefined && `${driftDays} days adrift`]
+          {[
+            ocean,
+            shores !== undefined &&
+              `${shores} ${shores === 1 ? 'shore' : 'shores'} reached`,
+          ]
             .filter(Boolean)
             .join(' · ')}
         </Text>

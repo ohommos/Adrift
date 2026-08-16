@@ -7,6 +7,7 @@ import { serializeIdentity } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../lib/logger";
 import { clientIp, detectCountry, UNKNOWN_COUNTRY } from "../lib/geoip";
+import { rateLimit } from "../middleware/rateLimit";
 
 export const identityRouter = Router();
 
@@ -68,7 +69,7 @@ function resolveCountryInBackground(userId: string, ip: string) {
     .catch((err) => logger.debug({ err }, "[identity] country backfill failed"));
 }
 
-identityRouter.get("/identity/available", async (req, res) => {
+identityRouter.get("/identity/available", rateLimit({ windowMs: 60_000, max: 90 }), async (req, res) => {
   const raw = req.query["nickname"];
   const check = validateNickname(Array.isArray(raw) ? raw[0] : raw);
   if (!check.ok) {
@@ -79,7 +80,10 @@ identityRouter.get("/identity/available", async (req, res) => {
   res.json({ available: !taken, ...(taken ? { reason: "That name is already taken" } : {}) });
 });
 
-identityRouter.post("/identity", async (req, res) => {
+// Account creation is unauthenticated and free, so it needs some ceiling.
+const createLimiter = rateLimit({ windowMs: 60_000, max: 10 });
+
+identityRouter.post("/identity", createLimiter, async (req, res) => {
   const body = req.body as Partial<IdentityCreateRequest>;
   const { deviceId } = body;
 

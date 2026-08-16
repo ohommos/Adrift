@@ -14,19 +14,13 @@ import Svg, { Rect, Circle, Line } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { useBottle } from '@/lib/api';
+import { STATE_LABEL } from '@/lib/labels';
 import { LetterView } from '@/components/LetterView';
 
 const MAP_W = 300;
 const MAP_H = 150;
 function projX(lon: number) { return ((lon + 180) / 360) * MAP_W; }
 function projY(lat: number) { return ((90 - lat) / 180) * MAP_H; }
-
-const STATUS_LABELS: Record<string, string> = {
-  drifting: 'Drifting',
-  beached: 'Beached',
-  sunk: 'Lost at sea',
-  opened: 'Found',
-};
 
 export default function TrackerScreen() {
   const { bottleId } = useLocalSearchParams<{ bottleId: string }>();
@@ -39,8 +33,8 @@ export default function TrackerScreen() {
 
   const statusColor =
     !bottle ? colors.mutedForeground
-    : bottle.status === 'sunk' ? colors.wax
-    : bottle.openCount > 0 ? colors.seaglass
+    : bottle.state === 'lost' ? colors.wax
+    : bottle.passOnCount > 0 || bottle.state === 'opened' ? colors.seaglass
     : colors.primary;
 
   return (
@@ -71,7 +65,7 @@ export default function TrackerScreen() {
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <Text style={[styles.statusLabel, { color: statusColor, fontFamily: 'Cinzel_400Regular' }]}>
-              {STATUS_LABELS[bottle.status] ?? bottle.status}
+              {STATE_LABEL[bottle.state]}
             </Text>
           </View>
 
@@ -96,9 +90,9 @@ export default function TrackerScreen() {
                   fill="white"
                 />
               </Svg>
-              {bottle.currentOcean && (
+              {bottle.region && (
                 <Text style={[styles.oceanLabel, { color: colors.mutedForeground, fontFamily: 'Cinzel_400Regular' }]}>
-                  {bottle.currentOcean}
+                  {bottle.region}
                 </Text>
               )}
             </View>
@@ -106,11 +100,11 @@ export default function TrackerScreen() {
 
           {/* Stats */}
           <View style={[styles.statsCard, { backgroundColor: colors.card }]}>
-            <Stat icon="wind" label="Days adrift" value={`${bottle.driftDays}`} colors={colors} />
+            <Stat icon="wind" label="Drift" value={`${Math.round(bottle.progress * 100)}%`} colors={colors} />
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <Stat icon="eye" label="Times opened" value={`${bottle.openCount}`} colors={colors} />
+            <Stat icon="repeat" label="Shores" value={`${bottle.passOnCount}`} colors={colors} />
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <Stat icon="globe" label="Countries" value={`${bottle.countriesVisited}`} colors={colors} />
+            <Stat icon="globe" label="Countries" value={`${bottle.countries.length}`} colors={colors} />
           </View>
 
           {/* Letter preview */}

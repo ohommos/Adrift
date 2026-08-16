@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { useCityShore } from '@/lib/api';
-import { BottleCard } from '@/components/BottleCard';
 import { EmptyState } from '@/components/EmptyState';
 
 export default function CityScreen() {
@@ -41,8 +40,8 @@ export default function CityScreen() {
         </View>
       ) : (
         <FlatList
-          data={data.bottles}
-          keyExtractor={(b) => b.id}
+          data={data.letters}
+          keyExtractor={(l, i) => `${l.nickname}-${i}`}
           contentContainerStyle={[
             styles.list,
             {
@@ -63,11 +62,24 @@ export default function CityScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <BottleCard
-              bottle={item}
-              mode="inbox"
-              onPress={() => router.push(`/read/${item.id}`)}
-            />
+            // A shore shows sample letters washed up here, not bottles you can
+            // claim — the server sends no id and opening is done from the Haul.
+            <View style={[styles.letter, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.letterHead}>
+                <Text style={[styles.letterFrom, { color: colors.primary, fontFamily: 'Cinzel_400Regular' }]}>
+                  {item.nickname}
+                </Text>
+                <Text style={[styles.letterShores, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
+                  {item.passOnCount} {item.passOnCount === 1 ? 'shore' : 'shores'}
+                </Text>
+              </View>
+              <Text
+                style={[styles.letterBody, { color: colors.foreground, fontFamily: 'Spectral_400Regular' }]}
+                numberOfLines={4}
+              >
+                {item.text}
+              </Text>
+            </View>
           )}
           ListEmptyComponent={
             <EmptyState
@@ -84,6 +96,17 @@ export default function CityScreen() {
 }
 
 const styles = StyleSheet.create({
+  letter: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    gap: 8,
+    marginBottom: 12,
+  },
+  letterHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  letterFrom: { fontSize: 13, letterSpacing: 1 },
+  letterShores: { fontSize: 12, opacity: 0.8 },
+  letterBody: { fontSize: 15, lineHeight: 22 },
   root: { flex: 1 },
   backBtn: { paddingHorizontal: 20, paddingBottom: 8 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

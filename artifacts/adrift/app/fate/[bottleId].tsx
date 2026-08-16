@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -14,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
+import { showAlert } from '@/lib/alert';
 import { useIdentity } from '@/context/IdentityContext';
 import { api } from '@/lib/api';
 
@@ -44,7 +44,7 @@ export default function FateScreen() {
       setDone(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Something went wrong.';
-      Alert.alert('Tide turned', msg);
+      showAlert('Tide turned', msg);
     } finally {
       setLoading(false);
     }

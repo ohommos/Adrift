@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -14,8 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
+import { showAlert } from '@/lib/alert';
 import { useIdentity } from '@/context/IdentityContext';
-import { useBottle, api, type Bottle } from '@/lib/api';
+import { useBottle, api, type InboxItem } from '@/lib/api';
 import { LetterView } from '@/components/LetterView';
 
 export default function ReadScreen() {
@@ -26,7 +26,7 @@ export default function ReadScreen() {
   const queryClient = useQueryClient();
   const { data: bottle, isLoading } = useBottle(token, bottleId ?? '');
   const [opened, setOpened] = useState(false);
-  const [openedBottle, setOpenedBottle] = useState<Bottle | null>(null);
+  const [openedBottle, setOpenedBottle] = useState<InboxItem | null>(null);
 
   const topPad = insets.top + (Platform.OS === 'web' ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0);
@@ -36,14 +36,19 @@ export default function ReadScreen() {
     if (!token || !bottleId || opened) return;
     setOpened(true);
     api.openBottle(token, bottleId)
-      .then(({ bottle: b }) => {
-        setOpenedBottle(b);
+      .then((item) => {
+        setOpenedBottle(item);
         queryClient.invalidateQueries({ queryKey: ['inbox'] });
       })
       .catch(() => {});
   }, [token, bottleId]);
 
+  // The open response is the authoritative reveal; the cached detail query is
+  // only a fallback for a re-visit. An inbox entry withholds its text until it
+  // has been opened, so guard against that rather than rendering "null".
   const displayBottle = openedBottle ?? bottle;
+  const letterText =
+    (openedBottle?.text ?? bottle?.text) || 'This bottle has not been opened yet.';
 
   const canReply =
     !!identity && (identity.isPro || !identity.usedFreeReply);
@@ -55,10 +60,9 @@ export default function ReadScreen() {
 
   const handleReply = () => {
     if (!canReply) {
-      Alert.alert(
+      showAlert(
         'No replies left',
-        'You have already used your free reply. Upgrade to Pro for unlimited replies.',
-        [{ text: 'OK' }]
+        'You have already used your free reply. Upgrade to Pro for unlimited replies.'
       );
       return;
     }
@@ -83,9 +87,9 @@ export default function ReadScreen() {
         <View style={styles.content}>
           {/* Letter */}
           <LetterView
-            text={displayBottle.text}
-            driftDays={displayBottle.driftDays}
-            ocean={displayBottle.currentOcean}
+            text={letterText}
+            shores={displayBottle.passOnCount}
+            ocean={bottle?.region}
             scrollable
           />
 

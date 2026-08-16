@@ -7,35 +7,51 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
-import type { Bottle } from '@/lib/api';
+import type { BottleSummary, InboxItem } from '@/lib/api';
+import { STATE_LABEL } from '@/lib/labels';
 
-const STATUS_LABELS: Record<string, string> = {
-  drifting: 'Drifting',
-  beached: 'Beached',
-  sunk: 'Lost at sea',
-  opened: 'Opened',
-};
+/**
+ * The two feeds carry genuinely different shapes: your own bottles have a
+ * drift state, while an inbox entry withholds its text until you open it.
+ * Discriminating on `mode` keeps each branch honest about what it can read.
+ */
+type BottleCardProps =
+  | {
+      mode?: 'mine';
+      bottle: BottleSummary;
+      onPress: () => void;
+      unread?: boolean;
+    }
+  | {
+      mode: 'inbox';
+      bottle: InboxItem;
+      onPress: () => void;
+      unread?: boolean;
+    };
 
-interface BottleCardProps {
-  bottle: Bottle;
-  onPress: () => void;
-  /** 'mine' shows drift stats; 'inbox' shows received indicator */
-  mode?: 'mine' | 'inbox';
-  unread?: boolean;
-}
-
-export function BottleCard({ bottle, onPress, mode = 'mine', unread = false }: BottleCardProps) {
+export function BottleCard(props: BottleCardProps) {
+  const { onPress, unread = false } = props;
+  const mode = props.mode ?? 'mine';
   const colors = useColors();
 
-  const statusColor =
-    bottle.status === 'sunk'
-      ? colors.wax
-      : bottle.status === 'opened' || bottle.openCount > 0
-      ? colors.seaglass
-      : colors.primary;
+  const state = mode === 'mine' ? (props.bottle as BottleSummary).state : null;
+  const passOnCount = props.bottle.passOnCount;
 
-  const preview =
-    bottle.text.length > 90 ? bottle.text.slice(0, 90) + '…' : bottle.text;
+  const statusColor =
+    state === 'lost'
+      ? colors.wax
+      : state === 'opened' || passOnCount > 0
+        ? colors.seaglass
+        : colors.primary;
+
+  // An unopened inbox entry deliberately carries no text — reading .length off
+  // it is what crashed the Haul tab for every new user.
+  const body = props.bottle.text;
+  const preview = body
+    ? body.length > 90
+      ? body.slice(0, 90) + '…'
+      : body
+    : 'Sealed — open it to read what is inside.';
 
   return (
     <TouchableOpacity
@@ -54,7 +70,7 @@ export function BottleCard({ bottle, onPress, mode = 'mine', unread = false }: B
       <View style={styles.statusRow}>
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         <Text style={[styles.statusLabel, { color: statusColor, fontFamily: 'Cinzel_400Regular' }]}>
-          {STATUS_LABELS[bottle.status] ?? bottle.status}
+          {mode === 'mine' && state ? STATE_LABEL[state] : 'Adrift to you'}
         </Text>
         {unread && (
           <View style={[styles.unreadBadge, { backgroundColor: colors.primary }]}>
@@ -75,14 +91,29 @@ export function BottleCard({ bottle, onPress, mode = 'mine', unread = false }: B
       <View style={styles.statsRow}>
         {mode === 'mine' ? (
           <>
-            <Stat icon="wind" value={`${bottle.driftDays}d`} label="drift" colors={colors} />
-            <Stat icon="eye" value={String(bottle.openCount)} label="opens" colors={colors} />
-            <Stat icon="globe" value={String(bottle.countriesVisited)} label="countries" colors={colors} />
+            <Stat
+              icon="anchor"
+              value={(props.bottle as BottleSummary).region}
+              label="waters"
+              colors={colors}
+            />
+            <Stat icon="repeat" value={String(passOnCount)} label="shores" colors={colors} />
+            <Stat
+              icon="globe"
+              value={String((props.bottle as BottleSummary).countries.length)}
+              label="countries"
+              colors={colors}
+            />
           </>
         ) : (
           <>
-            <Stat icon="anchor" value={bottle.currentOcean ?? '—'} label="found on" colors={colors} />
-            <Stat icon="clock" value={`${bottle.driftDays}d`} label="adrift" colors={colors} />
+            <Stat icon="repeat" value={String(passOnCount)} label="shores" colors={colors} />
+            <Stat
+              icon="mail"
+              value={(props.bottle as InboxItem).opened ? 'Opened' : 'Sealed'}
+              label="state"
+              colors={colors}
+            />
           </>
         )}
         <View style={{ flex: 1 }} />

@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
+import { showAlert } from '@/lib/alert';
 import { useIdentity } from '@/context/IdentityContext';
 import { api } from '@/lib/api';
 
@@ -47,7 +47,7 @@ export default function ReplyScreen() {
       router.replace('/reply-sent');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not send reply.';
-      Alert.alert('Tide turned', msg);
+      showAlert('Tide turned', msg);
     } finally {
       setSending(false);
     }

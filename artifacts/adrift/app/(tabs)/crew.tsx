@@ -5,13 +5,13 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Platform,
   ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { showAlert, showConfirm } from '@/lib/alert';
 import { useIdentity } from '@/context/IdentityContext';
 import { api } from '@/lib/api';
 
@@ -25,37 +25,26 @@ export default function CrewScreen() {
 
   const handleUnlockPro = async () => {
     if (!token || unlocking) return;
-    Alert.alert(
+    showConfirm(
       'Unlock Pro',
       'Go Pro for $5 — once, forever. Unlimited replies and send to any city in the world.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unlock',
-          onPress: async () => {
-            setUnlocking(true);
-            try {
-              await api.unlockPro(token);
-              await refreshIdentity();
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : 'Could not unlock Pro.';
-              Alert.alert('Tide turned', msg);
-            } finally {
-              setUnlocking(false);
-            }
-          },
-        },
-      ]
+      'Unlock',
+      async () => {
+        setUnlocking(true);
+        try {
+          await api.unlockPro(token);
+          await refreshIdentity();
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Could not unlock Pro.';
+          showAlert('Tide turned', msg);
+        } finally {
+          setUnlocking(false);
+        }
+      }
     );
   };
 
   if (!identity) return null;
-
-  const stats = [
-    { icon: 'wind', label: 'Bottles cast', value: '—' },
-    { icon: 'eye', label: 'Times opened', value: '—' },
-    { icon: 'globe', label: 'Countries reached', value: '—' },
-  ];
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -111,7 +100,7 @@ export default function CrewScreen() {
             </Text>
           </View>
           <Text style={[styles.creditHint, { color: colors.mutedForeground, fontFamily: 'Spectral_400Regular' }]}>
-            Credits are earned when your bottle is opened. Each open grants 1 credit.
+            Credits are earned by deciding a stranger's bottle — break or pass it on, and each earns 1. Three credits buy a reply.
           </Text>
         </View>
 

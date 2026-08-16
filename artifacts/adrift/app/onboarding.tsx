@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { api } from '@/lib/api';
+import { api, City } from '@/lib/api';
 
 const FLAGS = ['🌊', '🐚', '⚓', '🗺️', '🔭', '🪝', '🌙', '⛵'];
 
 function generateDeviceId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 export default function OnboardingScreen() {
@@ -30,6 +34,12 @@ export default function OnboardingScreen() {
   const { setIdentity } = useIdentity();
   const [nickname, setNickname] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedFlag, setSelectedFlag] = useState(() => pickRandom(FLAGS));
+  const citiesRef = useRef<City[]>([]);
+
+  useEffect(() => {
+    api.getCities().then((cities) => { citiesRef.current = cities; }).catch(() => {});
+  }, []);
 
   const canCast = nickname.trim().length >= 2 && nickname.trim().length <= 24;
 
@@ -38,9 +48,12 @@ export default function OnboardingScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     try {
+      const cities = citiesRef.current;
+      if (cities.length === 0) throw new Error('Could not load ports. Check your connection.');
+      const homeCity = pickRandom(cities);
       const deviceId = generateDeviceId();
-      const { token, user } = await api.createIdentity(deviceId, nickname.trim());
-      await setIdentity(user, token);
+      const { token, identity } = await api.createIdentity(deviceId, nickname.trim(), selectedFlag, homeCity.id);
+      await setIdentity(identity, token);
       router.replace('/(tabs)');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not reach the sea.';
@@ -126,10 +139,24 @@ export default function OnboardingScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Flavour flags */}
+        {/* Flag picker */}
+        <Text style={[styles.label, { color: colors.mutedForeground, marginBottom: 10 }]}>
+          YOUR FLAG
+        </Text>
         <View style={styles.flagRow}>
           {FLAGS.map((f) => (
-            <Text key={f} style={styles.flag}>{f}</Text>
+            <TouchableOpacity
+              key={f}
+              onPress={() => { setSelectedFlag(f); Haptics.selectionAsync(); }}
+              style={[
+                styles.flagBtn,
+                f === selectedFlag && { backgroundColor: colors.primary + '44', borderColor: colors.primary },
+                { borderColor: f === selectedFlag ? colors.primary : 'transparent' },
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.flag}>{f}</Text>
+            </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
@@ -196,10 +223,18 @@ const styles = StyleSheet.create({
   },
   flagRow: {
     flexDirection: 'row',
-    gap: 10,
-    opacity: 0.5,
+    gap: 8,
     flexWrap: 'wrap',
     justifyContent: 'center',
+    marginBottom: 16,
   },
-  flag: { fontSize: 20 },
+  flagBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flag: { fontSize: 22 },
 });

@@ -89,10 +89,10 @@ async function apiFetch<T>(
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
-  createIdentity: (deviceId: string, nickname: string) =>
-    apiFetch<{ token: string; user: SerializedIdentity }>('/identity', {
+  createIdentity: (deviceId: string, nickname: string, flag: string, homeCityId: string) =>
+    apiFetch<{ token: string; identity: SerializedIdentity }>('/identity', {
       method: 'POST',
-      body: JSON.stringify({ deviceId, nickname }),
+      body: JSON.stringify({ deviceId, nickname, flag, homeCityId }),
     }),
 
   getMe: (token: string) => apiFetch<SerializedIdentity>('/identity/me', { token }),

@@ -78,8 +78,11 @@ async function apiFetch<T>(
   if (token) (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${getBase()}/api${path}`, { ...rest, headers });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-    throw new Error((body as { message?: string }).message ?? `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({}));
+    const msg = (body as { error?: string; message?: string }).error
+      ?? (body as { message?: string }).message
+      ?? `HTTP ${res.status}`;
+    throw new Error(msg);
   }
   return res.json() as Promise<T>;
 }

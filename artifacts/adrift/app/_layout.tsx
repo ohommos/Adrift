@@ -16,7 +16,7 @@ import {
   IMFellEnglish_400Regular,
   IMFellEnglish_400Italic,
 } from '@expo-google-fonts/im-fell-english';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { IdentityProvider, useIdentity } from '@/context/IdentityContext';
 import { ComposeProvider } from '@/context/ComposeContext';
@@ -27,14 +27,17 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   const { isLoading, hasIdentity } = useIdentity();
+  const segments = useSegments();
 
   useEffect(() => {
-    if (!isLoading) {
-      if (!hasIdentity) {
-        router.replace('/onboarding');
-      }
+    if (isLoading) return;
+    const inTabs = segments[0] === '(tabs)';
+    if (!hasIdentity && inTabs) {
+      router.replace('/onboarding');
+    } else if (hasIdentity && !inTabs) {
+      router.replace('/(tabs)');
     }
-  }, [isLoading, hasIdentity]);
+  }, [isLoading, hasIdentity, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

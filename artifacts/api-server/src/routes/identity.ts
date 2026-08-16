@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { Router } from "express";
 import type { IdentityCreateRequest, IdentityCreateResponse } from "@adrift/shared";
 import { db, userTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, ilike } from "drizzle-orm";
 import { serializeIdentity } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
 import { randomUUID } from "crypto";
@@ -39,7 +39,8 @@ identityRouter.post("/identity", async (req, res) => {
   if (!deviceId || !nickname) {
     return res.status(400).json({ error: "deviceId and nickname are required" });
   }
-  if (nickname.trim().length < 2 || nickname.trim().length > 24) {
+  const trimmed = nickname.trim();
+  if (trimmed.length < 2 || trimmed.length > 24) {
     return res.status(400).json({ error: "nickname must be 2–24 characters" });
   }
 
@@ -58,6 +59,16 @@ identityRouter.post("/identity", async (req, res) => {
     return res.json(response);
   }
 
+  // Reject if nickname is already taken (case-insensitive)
+  const [takenBy] = await db
+    .select({ id: userTable.id })
+    .from(userTable)
+    .where(ilike(userTable.nickname, trimmed))
+    .limit(1);
+  if (takenBy) {
+    return res.status(409).json({ error: "That name is already taken — try another" });
+  }
+
   // Detect country from the request IP
   const rawIp =
     (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
@@ -71,7 +82,7 @@ identityRouter.post("/identity", async (req, res) => {
       id: randomUUID(),
       deviceId,
       token: randomBytes(24).toString("hex"),
-      nickname: nickname.trim().slice(0, 24),
+      nickname: trimmed,
       flag: randomFlag(),
       homeCountry,
     })

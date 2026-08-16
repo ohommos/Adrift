@@ -18,8 +18,6 @@ import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { api } from '@/lib/api';
 
-const EMOJIS = ['🌊', '🐚', '⚓', '🗺️', '🔭', '🪝', '🌙', '⛵'];
-
 function generateDeviceId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -41,7 +39,7 @@ export default function OnboardingScreen() {
       const deviceId = generateDeviceId();
       const { token, identity } = await api.createIdentity(deviceId, nickname.trim());
       await setIdentity(identity, token);
-      router.replace('/(tabs)');
+      // Navigation is handled by _layout.tsx watching hasIdentity
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not reach the sea.';
       Alert.alert('The tide is out', msg);
@@ -126,12 +124,6 @@ export default function OnboardingScreen() {
           )}
         </TouchableOpacity>
 
-        {/* Decorative emojis */}
-        <View style={styles.emojiRow}>
-          {EMOJIS.map((e) => (
-            <Text key={e} style={styles.emoji}>{e}</Text>
-          ))}
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -194,12 +186,4 @@ const styles = StyleSheet.create({
     fontSize: 22,
     letterSpacing: 1,
   },
-  emojiRow: {
-    flexDirection: 'row',
-    gap: 10,
-    opacity: 0.4,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  emoji: { fontSize: 20 },
 });

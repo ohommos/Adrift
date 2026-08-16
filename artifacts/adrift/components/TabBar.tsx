@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Ellipse, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { useIdentity } from '@/context/IdentityContext';
+import { useInbox } from '@/lib/api';
 
 // Structural shape of what expo-router's <Tabs tabBar> hands us, declared
 // locally so this does not depend on reaching into a transitive package.
@@ -38,6 +40,24 @@ const ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   crew: 'user',
 };
 
+/** Unopened count, or a bare dot once past what reads cleanly in a circle. */
+function Badge({ count }: { count: number }) {
+  const colors = useColors();
+  if (count <= 0) return null;
+  return (
+    <View
+      style={[
+        styles.badge,
+        { backgroundColor: colors.primary, borderColor: colors.background },
+      ]}
+    >
+      <Text style={[styles.badgeText, { color: colors.background }]} numberOfLines={1}>
+        {count > 9 ? '9+' : count}
+      </Text>
+    </View>
+  );
+}
+
 /** The globe that sits in the raised centre button. */
 function PlanetGlyph({ color }: { color: string }) {
   return (
@@ -56,6 +76,12 @@ export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 20 : 8);
 
+  // Same query key as the Inbox screen, so this shares one fetch and stays
+  // live off the poll already running there.
+  const { token } = useIdentity();
+  const { data: inbox } = useInbox(token);
+  const unopened = (inbox ?? []).filter((b) => !b.opened).length;
+
   const go = (index: number, name: string) => {
     const isFocused = state.index === index;
     const event = navigation.emit({ type: 'tabPress', target: state.routes[index].key, canPreventDefault: true });
@@ -67,6 +93,8 @@ export function TabBar({ state, navigation }: TabBarProps) {
     if (!route) return null;
     const focused = state.index === routeIndex;
     const tint = focused ? colors.primary : colors.mutedForeground;
+    const badgeCount = route.name === 'haul' ? unopened : 0;
+    const label = LABELS[route.name] ?? route.name;
     return (
       <Pressable
         key={route.key}
@@ -74,14 +102,20 @@ export function TabBar({ state, navigation }: TabBarProps) {
         style={styles.item}
         accessibilityRole="button"
         accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={
+          badgeCount > 0 ? `${label}, ${badgeCount} unopened` : label
+        }
       >
-        <Feather
-          name={ICONS[route.name] ?? 'circle'}
-          size={20}
-          color={tint}
-          style={{ opacity: focused ? 1 : 0.9 }}
-        />
-        <Text style={[styles.label, { color: tint }]}>{LABELS[route.name] ?? route.name}</Text>
+        <View style={styles.iconWrap}>
+          <Feather
+            name={ICONS[route.name] ?? 'circle'}
+            size={20}
+            color={tint}
+            style={{ opacity: focused ? 1 : 0.9 }}
+          />
+          <Badge count={badgeCount} />
+        </View>
+        <Text style={[styles.label, { color: tint }]}>{label}</Text>
       </Pressable>
     );
   };
@@ -138,6 +172,20 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
   item: { width: 62, alignItems: 'center', gap: 4 },
+  iconWrap: { width: 26, height: 22, alignItems: 'center', justifyContent: 'center' },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    left: 13,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { fontSize: 10, lineHeight: 13, fontFamily: 'Cinzel_700Bold' },
   label: { fontSize: 10, fontFamily: 'Cinzel_400Regular' },
   centreItem: { width: 62, alignItems: 'center', marginBottom: 2 },
   centreButton: {

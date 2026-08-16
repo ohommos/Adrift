@@ -15,6 +15,7 @@ export function serializeCity(city: City, bottleCount = 0) {
     id: city.id,
     name: city.name,
     flag: city.flag,
+    country: city.country,
     lat: city.lat,
     lon: city.lon,
     bottleCount,

@@ -14,7 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { G, Path, Rect } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { useCityShore } from '@/lib/api';
+import { useCities, useCityShore } from '@/lib/api';
+import { canSendToCity, findHomeCity } from '@/lib/homeCity';
 import { useCompose } from '@/context/ComposeContext';
 import { showAlert } from '@/lib/alert';
 import { Paper, Rule, TopBar, patina, webBottom, webTop } from '@/components/ui/primitives';
@@ -55,17 +56,22 @@ export default function CityShoreScreen() {
   const insets = useSafeAreaInsets();
   const { token, identity } = useIdentity();
   const { data, isLoading } = useCityShore(token, cityId ?? '');
+  const { data: cities } = useCities(token);
   const { setTargetCityId } = useCompose();
 
   const isPro = !!identity?.isPro;
+  const home = findHomeCity(cities, identity);
+  const isHome = !!home && home.id === cityId;
+  // Home water is free for everyone; other ports need Pro.
+  const canSend = data ? canSendToCity(data.city, home, isPro) : false;
   const count = data?.city.bottleCount ?? 0;
   const quiet = count < 20;
 
   const throwHere = () => {
-    if (!isPro) {
+    if (!canSend) {
       showAlert(
         'Pro required',
-        'Targeting a specific city requires a Pro account. Upgrade for $5, once, forever.'
+        `Your own shore is always free. Sending to ${data?.city.name ?? 'another city'} needs Pro — $5, once, forever.`
       );
       return;
     }
@@ -131,22 +137,26 @@ export default function CityShoreScreen() {
             style={[
               styles.cta,
               {
-                backgroundColor: isPro ? colors.primary : colors.secondary,
+                backgroundColor: canSend ? colors.primary : colors.secondary,
                 borderColor: colors.primary,
-                borderWidth: isPro ? 0 : 1,
+                borderWidth: canSend ? 0 : 1,
               },
             ]}
           >
-            {!isPro && <Feather name="lock" size={15} color={colors.primary} />}
+            {!canSend && <Feather name="lock" size={15} color={colors.primary} />}
             <Text
-              style={[styles.ctaText, { color: isPro ? colors.background : colors.primary }]}
+              style={[styles.ctaText, { color: canSend ? colors.background : colors.primary }]}
               numberOfLines={1}
             >
               Throw a bottle into {data.city.name}
             </Text>
           </Pressable>
           <Text style={[styles.ctaNote, { color: colors.mutedForeground }]}>
-            {isPro ? 'Pro lets you send to any city.' : 'Sending to another city is a Pro feature.'}
+            {isHome
+              ? 'This is your home water — always free.'
+              : isPro
+                ? 'Pro lets you send to any city.'
+                : 'Sending to another city is a Pro feature.'}
           </Text>
         </ScrollView>
       )}

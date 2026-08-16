@@ -16,7 +16,7 @@ import { useIdentity } from '@/context/IdentityContext';
 import { useCompose } from '@/context/ComposeContext';
 import { api, useCities } from '@/lib/api';
 import { showAlert } from '@/lib/alert';
-import { SCOPES } from '@/lib/limits';
+import { findHomeCity } from '@/lib/homeCity';
 import { SealButton } from '@/components/SealButton';
 import { TopBar, webBottom, webTop } from '@/components/ui/primitives';
 
@@ -29,14 +29,41 @@ export default function ScopeScreen() {
   const [scope, setScope] = useState<BottleScope>(targetCityId ? 'city' : 'global');
   const [casting, setCasting] = useState(false);
 
-  const targetCity = cities?.find((c) => c.id === targetCityId) ?? null;
   const isPro = !!identity?.isPro;
+  const home = findHomeCity(cities, identity);
+  // A city chosen from a shore wins; otherwise "your city" means home water.
+  const chosenCity = cities?.find((c) => c.id === targetCityId) ?? null;
+  const cityTarget = chosenCity ?? home;
+  // Home is always free. Any other port is the Pro feature.
+  const cityIsFree = !!cityTarget && !!home && cityTarget.id === home.id;
+  const cityLocked = !cityTarget || (!cityIsFree && !isPro);
+
+  const options: Array<{ id: BottleScope; label: string; desc: string }> = [
+    {
+      id: 'city',
+      label: cityTarget ? `${cityTarget.flag} ${cityTarget.name}` : 'A specific port',
+      desc: !cityTarget
+        ? 'We could not work out which coast is yours yet.'
+        : cityIsFree
+          ? 'Your home water. Only found by people there — a smaller, closer sea, and always free.'
+          : `Sending to ${cityTarget.name} is a Pro feature. Your own shore is always free.`,
+    },
+    {
+      id: 'global',
+      label: 'Global',
+      desc: "Could reach anyone, anywhere. You'll see which countries open it.",
+    },
+  ];
 
   const cast = async () => {
     if (!token || casting) return;
     setCasting(true);
     try {
-      await api.createBottle(token, text, scope === 'city' ? (targetCityId ?? undefined) : undefined);
+      await api.createBottle(
+        token,
+        text,
+        scope === 'city' ? (cityTarget?.id ?? undefined) : undefined
+      );
       await refreshIdentity();
       clearDraft();
       router.replace('/sent');
@@ -48,10 +75,12 @@ export default function ScopeScreen() {
   };
 
   const pickScope = (id: BottleScope) => {
-    if (id === 'city' && !isPro) {
+    if (id === 'city' && cityLocked) {
       showAlert(
-        'Pro required',
-        'Targeting a specific city requires a Pro account. Upgrade for $5, once, forever.'
+        !cityTarget ? 'No home water yet' : 'Pro required',
+        !cityTarget
+          ? "We could not work out which coast is yours, so there is no home water to send to. The open ocean is always available."
+          : `Your own shore is always free. Sending to ${cityTarget.name} needs Pro — $5, once, forever.`
       );
       return;
     }
@@ -72,12 +101,12 @@ export default function ScopeScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {targetCity && (
+        {chosenCity && (
           <View style={[styles.targeted, { backgroundColor: colors.card, borderColor: colors.primary }]}>
             <Feather name="map-pin" size={15} color={colors.primary} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.targetedTitle, { color: colors.foreground }]}>
-                Targeted at {targetCity.flag} {targetCity.name}
+                Targeted at {chosenCity.flag} {chosenCity.name}
               </Text>
               <Text style={[styles.targetedSub, { color: colors.mutedForeground }]}>
                 Chosen from the planet view
@@ -86,13 +115,13 @@ export default function ScopeScreen() {
           </View>
         )}
 
-        {SCOPES.map((s) => {
-          const active = scope === s.id;
-          const locked = s.id === 'city' && !isPro;
+        {options.map((o) => {
+          const active = scope === o.id;
+          const locked = o.id === 'city' && cityLocked;
           return (
             <Pressable
-              key={s.id}
-              onPress={() => pickScope(s.id)}
+              key={o.id}
+              onPress={() => pickScope(o.id)}
               style={[
                 styles.option,
                 {
@@ -103,10 +132,13 @@ export default function ScopeScreen() {
               ]}
             >
               <View style={styles.optionHead}>
-                <Text style={[styles.optionLabel, { color: colors.foreground }]}>{s.label}</Text>
+                <Text style={[styles.optionLabel, { color: colors.foreground }]}>{o.label}</Text>
                 {locked && <Feather name="lock" size={13} color={colors.primary} />}
+                {o.id === 'city' && cityIsFree && (
+                  <Text style={[styles.freeTag, { color: colors.seaglass }]}>FREE</Text>
+                )}
               </View>
-              <Text style={[styles.optionDesc, { color: colors.mutedForeground }]}>{s.desc}</Text>
+              <Text style={[styles.optionDesc, { color: colors.mutedForeground }]}>{o.desc}</Text>
             </Pressable>
           );
         })}
@@ -144,6 +176,7 @@ const styles = StyleSheet.create({
   targetedSub: { fontSize: 11, marginTop: 2, fontFamily: 'Spectral_400Regular' },
   option: { borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 12 },
   optionHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  freeTag: { fontSize: 9.5, letterSpacing: 1, fontFamily: 'Cinzel_700Bold' },
   optionLabel: { fontSize: 15, fontFamily: 'Spectral_600SemiBold' },
   optionDesc: { fontSize: 12, marginTop: 3, lineHeight: 18, fontFamily: 'Spectral_400Regular' },
   deal: { borderRadius: 18, padding: 16, marginTop: 4 },

@@ -16,6 +16,8 @@ export interface City {
   id: string;
   name: string;
   flag: string;
+  /** Used to tell whether this is the caller's home water, which is free. */
+  country: string;
   lat: number;
   lon: number;
   bottleCount: number;

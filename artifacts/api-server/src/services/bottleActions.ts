@@ -65,9 +65,6 @@ export async function createBottle(
     if (!input.targetCityId) {
       throw new HttpError(400, "targetCityId is required for city-scoped bottles");
     }
-    if (!author.isPro) {
-      throw new HttpError(403, "Sending to a city requires Pro");
-    }
     targetCityId = input.targetCityId;
     const [targetCity] = await db
       .select()
@@ -75,6 +72,17 @@ export async function createBottle(
       .where(eq(cityTable.id, targetCityId))
       .limit(1);
     if (!targetCity) throw new HttpError(400, "Unknown targetCityId");
+
+    // Your own shore is always free; reaching any other port is the Pro
+    // feature. Home is derived from the country resolved at signup — an
+    // unresolved country ("Unknown") matches no city, so it grants nothing.
+    const isHomeWater =
+      author.homeCountry !== UNKNOWN_COUNTRY &&
+      targetCity.country === author.homeCountry;
+    if (!isHomeWater && !author.isPro) {
+      throw new HttpError(403, "Sending to another city requires Pro");
+    }
+
     origin = { lat: targetCity.lat, lon: targetCity.lon };
   }
 

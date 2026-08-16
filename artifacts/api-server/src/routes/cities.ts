@@ -53,7 +53,7 @@ citiesRouter.get("/cities/:id/shore", async (req, res) => {
         inArray(bottleTable.state, [...ACTIVE_STATES]),
         or(
           and(eq(bottleTable.scope, "city"), eq(bottleTable.targetCityId, city.id)),
-          and(eq(bottleTable.scope, "global"), eq(userTable.homeCityId, city.id))
+          eq(bottleTable.scope, "global")
         )
       )
     )

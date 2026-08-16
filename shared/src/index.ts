@@ -25,7 +25,7 @@ export interface Identity {
   id: string;
   nickname: string;
   flag: string;
-  homeCity: City;
+  homeCountry: string;
   isPro: boolean;
   credits: number;
   usedFreeReply: boolean;
@@ -34,8 +34,6 @@ export interface Identity {
 export interface IdentityCreateRequest {
   deviceId: string;
   nickname: string;
-  flag: string;
-  homeCityId: string;
 }
 
 export interface IdentityCreateResponse {
@@ -71,7 +69,7 @@ export interface InboxItem {
   text: string | null;
   authorNickname: string | null;
   authorFlag: string | null;
-  authorCity: string | null;
+  authorCountry: string | null;
   createdAt: string;
 }
 

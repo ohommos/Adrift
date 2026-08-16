@@ -20,15 +20,12 @@ export function serializeCity(city: City, bottleCount = 0) {
   };
 }
 
-export async function serializeIdentity(
-  user: User,
-  homeCity: City
-): Promise<Identity> {
+export function serializeIdentity(user: User): Identity {
   return {
     id: user.id,
     nickname: user.nickname,
     flag: user.flag,
-    homeCity: serializeCity(homeCity),
+    homeCountry: user.homeCountry,
     isPro: user.isPro,
     credits: user.credits,
     usedFreeReply: user.usedFreeReply,

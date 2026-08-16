@@ -61,10 +61,13 @@ export async function createBottle(
   let origin = randomOceanPoint();
 
   if (input.scope === "city") {
-    targetCityId = input.targetCityId ?? author.homeCityId;
-    if (targetCityId !== author.homeCityId && !author.isPro) {
-      throw new HttpError(403, "Sending to another city requires Pro");
+    if (!input.targetCityId) {
+      throw new HttpError(400, "targetCityId is required for city-scoped bottles");
     }
+    if (!author.isPro) {
+      throw new HttpError(403, "Sending to a city requires Pro");
+    }
+    targetCityId = input.targetCityId;
     const [targetCity] = await db
       .select()
       .from(cityTable)
@@ -100,38 +103,22 @@ export async function createBottle(
 // listInbox
 // ---------------------------------------------------------------------------
 export async function listInbox(readerId: string): Promise<InboxItem[]> {
-  const [resolvedRows, readerRows] = await Promise.all([
-    db
-      .select({ bottleId: bottleInteractionTable.bottleId })
-      .from(bottleInteractionTable)
-      .where(
-        and(
-          eq(bottleInteractionTable.readerId, readerId),
-          isNotNull(bottleInteractionTable.action)
-        )
-      ),
-    db
-      .select({ homeCityId: userTable.homeCityId })
-      .from(userTable)
-      .where(eq(userTable.id, readerId))
-      .limit(1),
-  ]);
+  const resolvedRows = await db
+    .select({ bottleId: bottleInteractionTable.bottleId })
+    .from(bottleInteractionTable)
+    .where(
+      and(
+        eq(bottleInteractionTable.readerId, readerId),
+        isNotNull(bottleInteractionTable.action)
+      )
+    );
 
-  const reader = readerRows[0];
-  if (!reader) throw new HttpError(400, "Reader not found");
   const resolvedIds = resolvedRows.map((r) => r.bottleId);
 
   const bottleConditions = and(
     ne(bottleTable.authorId, readerId),
     inArray(bottleTable.state, ["drifting", "nearing", "opened"]),
-    resolvedIds.length > 0 ? notInArray(bottleTable.id, resolvedIds) : undefined,
-    or(
-      eq(bottleTable.scope, "global"),
-      and(
-        eq(bottleTable.scope, "city"),
-        eq(bottleTable.targetCityId, reader.homeCityId)
-      )
-    )
+    resolvedIds.length > 0 ? notInArray(bottleTable.id, resolvedIds) : undefined
   );
 
   const bottles = await db
@@ -143,11 +130,10 @@ export async function listInbox(readerId: string): Promise<InboxItem[]> {
       createdAt: bottleTable.createdAt,
       authorNickname: userTable.nickname,
       authorFlag: userTable.flag,
-      authorCity: cityTable.name,
+      authorCountry: userTable.homeCountry,
     })
     .from(bottleTable)
     .innerJoin(userTable, eq(bottleTable.authorId, userTable.id))
-    .innerJoin(cityTable, eq(userTable.homeCityId, cityTable.id))
     .where(bottleConditions)
     .orderBy(desc(bottleTable.lastEventAt))
     .limit(20);
@@ -178,7 +164,7 @@ export async function listInbox(readerId: string): Promise<InboxItem[]> {
       text: opened ? b.text : null,
       authorNickname: opened ? b.authorNickname : null,
       authorFlag: opened ? b.authorFlag : null,
-      authorCity: opened ? b.authorCity : null,
+      authorCountry: opened ? b.authorCountry : null,
       createdAt: b.createdAt.toISOString(),
     };
   });
@@ -193,24 +179,20 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
       bottle: bottleTable,
       authorNickname: userTable.nickname,
       authorFlag: userTable.flag,
-      authorCityName: cityTable.name,
+      authorCountry: userTable.homeCountry,
     })
     .from(bottleTable)
     .innerJoin(userTable, eq(bottleTable.authorId, userTable.id))
-    .innerJoin(cityTable, eq(userTable.homeCityId, cityTable.id))
     .where(eq(bottleTable.id, bottleId))
     .limit(1);
 
   if (!bottleRow) throw new HttpError(404, "Not found");
-  const { bottle, authorNickname, authorFlag, authorCityName } = bottleRow;
+  const { bottle, authorNickname, authorFlag, authorCountry } = bottleRow;
 
   if (bottle.authorId === readerId) throw new HttpError(400, "Can't open your own bottle");
   if (bottle.state === "lost") throw new HttpError(410, "This bottle is lost at sea");
 
   const reader = await findUserOrThrow(readerId);
-  if (bottle.scope === "city" && bottle.targetCityId !== reader.homeCityId) {
-    throw new HttpError(403, "Not in this bottle's water");
-  }
 
   const reveal = (): InboxItem => ({
     id: bottle.id,
@@ -220,7 +202,7 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
     text: bottle.text,
     authorNickname,
     authorFlag,
-    authorCity: authorCityName,
+    authorCountry,
     createdAt: bottle.createdAt.toISOString(),
   });
 
@@ -236,19 +218,10 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
     .limit(1);
   if (existing) return reveal();
 
-  const [[readerCityRow], priorOpens] = await Promise.all([
-    db
-      .select({ country: cityTable.country })
-      .from(cityTable)
-      .where(eq(cityTable.id, reader.homeCityId))
-      .limit(1),
-    db
-      .select({ country: bottleOpenTable.country })
-      .from(bottleOpenTable)
-      .where(eq(bottleOpenTable.bottleId, bottleId)),
-  ]);
-
-  if (!readerCityRow) throw new HttpError(400, "Reader city not found");
+  const priorOpens = await db
+    .select({ country: bottleOpenTable.country })
+    .from(bottleOpenTable)
+    .where(eq(bottleOpenTable.bottleId, bottleId));
 
   await db.insert(bottleInteractionTable).values({
     id: randomUUID(),
@@ -256,12 +229,13 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
     readerId,
   });
 
+  const readerCountry = reader.homeCountry;
   const priorCountries = [...new Set(priorOpens.map((o) => o.country))];
   await db.insert(bottleOpenTable).values({
     id: randomUUID(),
     bottleId,
     readerId,
-    country: readerCityRow.country,
+    country: readerCountry,
   });
 
   const wasFirstOpen = priorOpens.length === 0;
@@ -274,15 +248,12 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
 
   if (wasFirstOpen) {
     await notify(bottle.authorId, bottle.id, "opened", "Someone opened your bottle.");
-  } else if (
-    bottle.scope === "global" &&
-    !priorCountries.includes(readerCityRow.country)
-  ) {
+  } else if (bottle.scope === "global" && !priorCountries.includes(readerCountry)) {
     await notify(
       bottle.authorId,
       bottle.id,
       "country",
-      `Opened in ${readerCityRow.country}.`
+      `Opened in ${readerCountry}.`
     );
   }
 

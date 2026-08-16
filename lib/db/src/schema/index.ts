@@ -35,9 +35,7 @@ export const userTable = pgTable("User", {
   token: text("token").notNull().unique(),
   nickname: text("nickname").notNull(),
   flag: text("flag").notNull(),
-  homeCityId: text("homeCityId")
-    .notNull()
-    .references(() => cityTable.id),
+  homeCountry: text("homeCountry").notNull().default("Unknown"),
   isPro: boolean("isPro").notNull().default(false),
   credits: integer("credits").notNull().default(0),
   usedFreeReply: boolean("usedFreeReply").notNull().default(false),

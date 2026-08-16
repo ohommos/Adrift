@@ -17,11 +17,9 @@ export interface City {
 
 export interface SerializedIdentity {
   id: string;
-  token: string;
   nickname: string;
   flag: string;
-  homeCityId: string;
-  homeCity?: City;
+  homeCountry: string;
   isPro: boolean;
   credits: number;
   usedFreeReply: boolean;
@@ -89,10 +87,10 @@ async function apiFetch<T>(
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
-  createIdentity: (deviceId: string, nickname: string, flag: string, homeCityId: string) =>
+  createIdentity: (deviceId: string, nickname: string) =>
     apiFetch<{ token: string; identity: SerializedIdentity }>('/identity', {
       method: 'POST',
-      body: JSON.stringify({ deviceId, nickname, flag, homeCityId }),
+      body: JSON.stringify({ deviceId, nickname }),
     }),
 
   getMe: (token: string) => apiFetch<SerializedIdentity>('/identity/me', { token }),

@@ -14,8 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { api } from '@/lib/api';
+import { api, useCities } from '@/lib/api';
 import { getStoredItem, setStoredItem } from '@/lib/storage';
+import { ShorePicker } from '@/components/ShorePicker';
+import type { City } from '@adrift/shared';
 
 const DEVICE_ID_KEY = 'adrift.deviceId';
 
@@ -39,10 +41,12 @@ export default function OnboardingScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taken, setTaken] = useState<string | null>(null);
+  const [home, setHome] = useState<City | null>(null);
+  const { data: cities } = useCities(null);
 
   const trimmed = nickname.trim();
   const wellFormed = trimmed.length >= 2 && trimmed.length <= 24;
-  const canCast = wellFormed && taken !== trimmed.toLowerCase();
+  const canCast = wellFormed && taken !== trimmed.toLowerCase() && !!home;
 
   // Tell the user their name is gone while they are still typing, rather than
   // only after they commit to it.
@@ -76,7 +80,7 @@ export default function OnboardingScreen() {
     setError(null);
     try {
       const deviceId = await getDeviceId();
-      const { token, identity } = await api.createIdentity(deviceId, trimmed);
+      const { token, identity } = await api.createIdentity(deviceId, trimmed, home?.id);
       await setIdentity(identity, token);
       // Navigation is handled by _layout.tsx watching hasIdentity
     } catch (e: unknown) {
@@ -154,6 +158,24 @@ export default function OnboardingScreen() {
               {notice}
             </Text>
           )}
+        </View>
+
+        {/* Home shore */}
+        <View style={styles.form}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            YOUR HOME WATER
+          </Text>
+          <ShorePicker
+            cities={cities ?? []}
+            selectedId={home?.id ?? null}
+            onSelect={setHome}
+            maxHeight={260}
+          />
+          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+            {home
+              ? `Bottles you send to ${home.name} are always free. Anywhere else needs Pro.`
+              : 'Pick the shore you call home — sending there is always free.'}
+          </Text>
         </View>
 
         {/* CTA */}

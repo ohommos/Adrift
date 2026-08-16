@@ -28,6 +28,7 @@ export function serializeIdentity(user: User): Identity {
     nickname: user.nickname,
     flag: user.flag,
     homeCountry: user.homeCountry,
+    homeCityId: user.homeCityId ?? null,
     isPro: user.isPro,
     credits: user.credits,
     usedFreeReply: user.usedFreeReply,

@@ -102,10 +102,17 @@ async function apiFetch<T>(
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
-  createIdentity: (deviceId: string, nickname: string) =>
+  createIdentity: (deviceId: string, nickname: string, homeCityId?: string) =>
     apiFetch<IdentityCreateResponse>('/identity', {
       method: 'POST',
-      body: JSON.stringify({ deviceId, nickname }),
+      body: JSON.stringify({ deviceId, nickname, ...(homeCityId ? { homeCityId } : {}) }),
+    }),
+
+  setHomeCity: (token: string, cityId: string) =>
+    apiFetch<Identity>('/identity/home', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ cityId }),
     }),
 
   getMe: (token: string) => apiFetch<Identity>('/identity/me', { token }),

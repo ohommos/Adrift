@@ -39,6 +39,10 @@ export const userTable = pgTable(
     nickname: text("nickname").notNull(),
     flag: text("flag").notNull(),
     homeCountry: text("homeCountry").notNull().default("Unknown"),
+    // The shore the user picked as theirs. Chosen, not inferred — sending
+    // here is free, so a guess is not good enough.
+    homeCityId: text("homeCityId"),
+    homeCityChangedAt: timestamp("homeCityChangedAt"),
     isPro: boolean("isPro").notNull().default(false),
     credits: integer("credits").notNull().default(0),
     usedFreeReply: boolean("usedFreeReply").notNull().default(false),

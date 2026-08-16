@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +12,9 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { api, useMyBottles } from '@/lib/api';
+import { api, useCities, useMyBottles } from '@/lib/api';
+import { findHomeCity } from '@/lib/homeCity';
+import { ShorePicker } from '@/components/ShorePicker';
 import { showAlert, showConfirm } from '@/lib/alert';
 import { CREDITS_PER_REPLY } from '@/lib/limits';
 import { Rule, TopBar, webBottom, webTop } from '@/components/ui/primitives';
@@ -21,7 +24,26 @@ export default function YouScreen() {
   const insets = useSafeAreaInsets();
   const { identity, token, refreshIdentity } = useIdentity();
   const { data: mine } = useMyBottles(token);
+  const { data: cities } = useCities(token);
   const [unlocking, setUnlocking] = useState(false);
+  const [movingShore, setMovingShore] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const home = findHomeCity(cities, identity ?? null);
+
+  const moveShore = async (cityId: string) => {
+    if (!token || saving) return;
+    setSaving(true);
+    try {
+      await api.setHomeCity(token, cityId);
+      await refreshIdentity();
+      setMovingShore(false);
+    } catch (e: unknown) {
+      showAlert('Could not move', e instanceof Error ? e.message : 'Try again later.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Derived from your own bottles — the design's three stats need no new
   // endpoint, they are all present in what Tide already fetches.
@@ -94,6 +116,29 @@ export default function YouScreen() {
           ))}
         </View>
 
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <Rule label="Your home water" />
+          <View style={styles.homeRow}>
+            <Text style={styles.homeFlag}>{home?.flag ?? '🌊'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.homeName, { color: colors.foreground }]}>
+                {home?.name ?? 'Not set'}
+              </Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                {home ? 'Sending here is always free.' : 'Pick a shore to send to for free.'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setMovingShore(true)}
+              style={[styles.moveBtn, { borderColor: colors.primary }]}
+            >
+              <Text style={[styles.moveBtnText, { color: colors.primary }]}>
+                {home ? 'Move' : 'Pick'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
         {!identity.isPro && (
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <Rule label="Toward your next reply" />
@@ -158,6 +203,36 @@ export default function YouScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={movingShore}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMovingShore(false)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setMovingShore(false)}>
+          <Pressable
+            style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 28 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={[styles.grabber, { backgroundColor: colors.mutedForeground }]} />
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Your home water</Text>
+            <Text style={[styles.sheetNote, { color: colors.mutedForeground }]}>
+              Sending here is free. You can move again after 30 days.
+            </Text>
+            {saving ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 28 }} />
+            ) : (
+              <ShorePicker
+                cities={cities ?? []}
+                selectedId={home?.id ?? null}
+                onSelect={(c) => moveShore(c.id)}
+                maxHeight={340}
+              />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -180,6 +255,16 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 19, fontFamily: 'Cinzel_700Bold' },
   statLabel: { fontSize: 11, marginTop: 2, fontFamily: 'Spectral_400Regular' },
   card: { borderRadius: 18, padding: 16, marginBottom: 12 },
+  homeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  homeFlag: { fontSize: 24 },
+  homeName: { fontSize: 15, fontFamily: 'Spectral_600SemiBold' },
+  moveBtn: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
+  moveBtnText: { fontSize: 12.5, fontFamily: 'Spectral_600SemiBold' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(5,17,26,0.6)', justifyContent: 'flex-end' },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24 },
+  grabber: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', opacity: 0.4, marginBottom: 18 },
+  sheetTitle: { fontSize: 19, fontFamily: 'PirataOne_400Regular', marginBottom: 4 },
+  sheetNote: { fontSize: 12, marginBottom: 14, fontFamily: 'Spectral_400Regular' },
   barRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   bar: { flex: 1, height: 6, borderRadius: 3 },
   cardBody: { fontSize: 12.5, lineHeight: 19, fontFamily: 'Spectral_400Regular' },

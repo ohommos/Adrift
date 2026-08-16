@@ -73,12 +73,14 @@ export async function createBottle(
       .limit(1);
     if (!targetCity) throw new HttpError(400, "Unknown targetCityId");
 
-    // Your own shore is always free; reaching any other port is the Pro
-    // feature. Home is derived from the country resolved at signup — an
-    // unresolved country ("Unknown") matches no city, so it grants nothing.
-    const isHomeWater =
-      author.homeCountry !== UNKNOWN_COUNTRY &&
-      targetCity.country === author.homeCountry;
+    // Your own shore is always free; reaching any other port is Pro.
+    // Accounts made before the picker existed have no chosen shore, so they
+    // fall back to the country resolved at signup rather than losing the
+    // free port they already had.
+    const isHomeWater = author.homeCityId
+      ? author.homeCityId === targetCity.id
+      : author.homeCountry !== UNKNOWN_COUNTRY &&
+        targetCity.country === author.homeCountry;
     if (!isHomeWater && !author.isPro) {
       throw new HttpError(403, "Sending to another city requires Pro");
     }

@@ -1,7 +1,12 @@
 import { randomBytes, randomUUID } from "crypto";
 import { Router } from "express";
-import type { IdentityCreateRequest, IdentityCreateResponse } from "@adrift/shared";
-import { db, userTable } from "@workspace/db";
+import type {
+  IdentityCreateRequest,
+  IdentityCreateResponse,
+  SetHomeCityRequest,
+} from "@adrift/shared";
+import { HOME_CITY_COOLDOWN_DAYS } from "@adrift/shared";
+import { db, userTable, cityTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { serializeIdentity } from "../lib/serialize";
 import { requireAuth } from "../middleware/auth";
@@ -69,6 +74,15 @@ function resolveCountryInBackground(userId: string, ip: string) {
     .catch((err) => logger.debug({ err }, "[identity] country backfill failed"));
 }
 
+async function cityExists(cityId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: cityTable.id })
+    .from(cityTable)
+    .where(eq(cityTable.id, cityId))
+    .limit(1);
+  return !!row;
+}
+
 identityRouter.get("/identity/available", rateLimit({ windowMs: 60_000, max: 90 }), async (req, res) => {
   const raw = req.query["nickname"];
   const check = validateNickname(Array.isArray(raw) ? raw[0] : raw);
@@ -97,6 +111,12 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
     return;
   }
   const nickname = check.value;
+
+  const homeCityId = typeof body.homeCityId === "string" ? body.homeCityId : null;
+  if (homeCityId && !(await cityExists(homeCityId))) {
+    res.status(400).json({ error: "Unknown homeCityId" });
+    return;
+  }
 
   // Return the existing identity for this device. This is what lets a signup
   // that created the account but failed before the client stored the token be
@@ -134,6 +154,8 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
         nickname,
         flag: randomFlag(),
         homeCountry: UNKNOWN_COUNTRY,
+        homeCityId,
+        homeCityChangedAt: homeCityId ? new Date() : null,
       })
       .returning();
   } catch (err) {
@@ -157,4 +179,46 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
 
 identityRouter.get("/identity/me", requireAuth, async (req, res) => {
   res.json(serializeIdentity(req.user!));
+});
+
+/**
+ * Move your home shore. Sending there is free, so an unlimited change would
+ * make the Pro city feature meaningless — hop, send, hop again. A cooldown
+ * keeps it an occasional move rather than a workaround.
+ */
+identityRouter.post("/identity/home", requireAuth, async (req, res) => {
+  const user = req.user!;
+  const body = req.body as Partial<SetHomeCityRequest>;
+  const cityId = typeof body.cityId === "string" ? body.cityId : null;
+
+  if (!cityId) {
+    res.status(400).json({ error: "cityId is required" });
+    return;
+  }
+  if (!(await cityExists(cityId))) {
+    res.status(400).json({ error: "Unknown cityId" });
+    return;
+  }
+  if (cityId === user.homeCityId) {
+    res.json(serializeIdentity(user));
+    return;
+  }
+
+  const cooldownMs = HOME_CITY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+  const changedAt = user.homeCityChangedAt?.getTime() ?? 0;
+  const readyAt = changedAt + cooldownMs;
+  if (changedAt && Date.now() < readyAt) {
+    const days = Math.ceil((readyAt - Date.now()) / (24 * 60 * 60 * 1000));
+    res.status(429).json({
+      error: `You moved shores recently. You can move again in ${days} ${days === 1 ? "day" : "days"}.`,
+    });
+    return;
+  }
+
+  const [updated] = await db
+    .update(userTable)
+    .set({ homeCityId: cityId, homeCityChangedAt: new Date() })
+    .where(eq(userTable.id, user.id))
+    .returning();
+  res.json(serializeIdentity(updated!));
 });

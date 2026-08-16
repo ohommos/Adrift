@@ -28,6 +28,8 @@ export interface Identity {
   nickname: string;
   flag: string;
   homeCountry: string;
+  /** The shore the user picked. Sending here is free. */
+  homeCityId: string | null;
   isPro: boolean;
   credits: number;
   usedFreeReply: boolean;
@@ -36,7 +38,15 @@ export interface Identity {
 export interface IdentityCreateRequest {
   deviceId: string;
   nickname: string;
+  homeCityId?: string;
 }
+
+export interface SetHomeCityRequest {
+  cityId: string;
+}
+
+/** How long a chosen shore is fixed before it can be changed again. */
+export const HOME_CITY_COOLDOWN_DAYS = 30;
 
 export interface IdentityCreateResponse {
   token: string;

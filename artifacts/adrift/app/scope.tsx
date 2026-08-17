@@ -14,9 +14,9 @@ import type { BottleScope } from '@adrift/shared';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
 import { useCompose } from '@/context/ComposeContext';
-import { api, useCities } from '@/lib/api';
+import { api, useShores } from '@/lib/api';
 import { showAlert } from '@/lib/alert';
-import { findHomeCity } from '@/lib/homeCity';
+import { findHomeShore } from '@/lib/homeShore';
 import { SealButton } from '@/components/SealButton';
 import { TopBar, webBottom, webTop } from '@/components/ui/primitives';
 
@@ -24,34 +24,34 @@ export default function ScopeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token, identity, refreshIdentity } = useIdentity();
-  const { text, targetCityId, clearDraft } = useCompose();
-  const { data: cities } = useCities(token);
-  const [scope, setScope] = useState<BottleScope>(targetCityId ? 'city' : 'global');
+  const { text, targetShoreId, clearDraft } = useCompose();
+  const { data: shores } = useShores(token);
+  const [scope, setScope] = useState<BottleScope>(targetShoreId ? 'shore' : 'ocean');
   const [casting, setCasting] = useState(false);
 
   const isPro = !!identity?.isPro;
-  const home = findHomeCity(cities, identity);
-  // A city chosen from a shore wins; otherwise "your city" means home water.
-  const chosenCity = cities?.find((c) => c.id === targetCityId) ?? null;
-  const cityTarget = chosenCity ?? home;
-  // Home is always free. Any other port is the Pro feature.
-  const cityIsFree = !!cityTarget && !!home && cityTarget.id === home.id;
-  const cityLocked = !cityTarget || (!cityIsFree && !isPro);
+  const home = findHomeShore(shores, identity);
+  // A shore chosen from the planet wins; otherwise "a shore" means your own.
+  const chosenShore = shores?.find((s) => s.id === targetShoreId) ?? null;
+  const shoreTarget = chosenShore ?? home;
+  // Your own shore is always free. Any other one is the Pro feature.
+  const shoreIsFree = !!shoreTarget && !!home && shoreTarget.id === home.id;
+  const shoreLocked = !shoreTarget || (!shoreIsFree && !isPro);
 
   const options: Array<{ id: BottleScope; label: string; desc: string }> = [
     {
-      id: 'city',
-      label: cityTarget ? `${cityTarget.flag} ${cityTarget.name}` : 'A specific port',
-      desc: !cityTarget
-        ? 'We could not work out which coast is yours yet.'
-        : cityIsFree
-          ? 'Your home water. Only found by people there — a smaller, closer sea, and always free.'
-          : `Sending to ${cityTarget.name} is a Pro feature. Your own shore is always free.`,
+      id: 'shore',
+      label: shoreTarget ? `${shoreTarget.flag} ${shoreTarget.name}` : 'A shore',
+      desc: !shoreTarget
+        ? 'You have not picked your shore yet.'
+        : shoreIsFree
+          ? 'It waits where you live. Only people from your shore will find it — a smaller, closer sea, and always free.'
+          : `Writing to ${shoreTarget.name} is a Pro feature. Your own shore is always free.`,
     },
     {
-      id: 'global',
-      label: 'Global',
-      desc: "Could reach anyone, anywhere. You'll see which countries open it.",
+      id: 'ocean',
+      label: 'The Open Ocean',
+      desc: "It drifts. Whoever it passes can pull it out, and you'll see where it has been.",
     },
   ];
 
@@ -62,7 +62,7 @@ export default function ScopeScreen() {
       await api.createBottle(
         token,
         text,
-        scope === 'city' ? (cityTarget?.id ?? undefined) : undefined
+        scope === 'shore' ? (shoreTarget?.id ?? undefined) : undefined
       );
       await refreshIdentity();
       clearDraft();
@@ -75,12 +75,12 @@ export default function ScopeScreen() {
   };
 
   const pickScope = (id: BottleScope) => {
-    if (id === 'city' && cityLocked) {
+    if (id === 'shore' && shoreLocked) {
       showAlert(
-        !cityTarget ? 'No home water yet' : 'Pro required',
-        !cityTarget
-          ? "We could not work out which coast is yours, so there is no home water to send to. The open ocean is always available."
-          : `Your own shore is always free. Sending to ${cityTarget.name} needs Pro — $5, once, forever.`
+        !shoreTarget ? 'No shore yet' : 'Pro required',
+        !shoreTarget
+          ? 'Pick your shore from your profile first. The open ocean is always available.'
+          : `Your own shore is always free. Writing to ${shoreTarget.name} needs Pro — $5, once, forever.`
       );
       return;
     }
@@ -101,12 +101,12 @@ export default function ScopeScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {chosenCity && (
+        {chosenShore && (
           <View style={[styles.targeted, { backgroundColor: colors.card, borderColor: colors.primary }]}>
             <Feather name="map-pin" size={15} color={colors.primary} />
             <View style={{ flex: 1 }}>
               <Text style={[styles.targetedTitle, { color: colors.foreground }]}>
-                Targeted at {chosenCity.flag} {chosenCity.name}
+                Addressed to {chosenShore.flag} {chosenShore.name}
               </Text>
               <Text style={[styles.targetedSub, { color: colors.mutedForeground }]}>
                 Chosen from the planet view
@@ -117,7 +117,7 @@ export default function ScopeScreen() {
 
         {options.map((o) => {
           const active = scope === o.id;
-          const locked = o.id === 'city' && cityLocked;
+          const locked = o.id === 'shore' && shoreLocked;
           return (
             <Pressable
               key={o.id}
@@ -134,7 +134,7 @@ export default function ScopeScreen() {
               <View style={styles.optionHead}>
                 <Text style={[styles.optionLabel, { color: colors.foreground }]}>{o.label}</Text>
                 {locked && <Feather name="lock" size={13} color={colors.primary} />}
-                {o.id === 'city' && cityIsFree && (
+                {o.id === 'shore' && shoreIsFree && (
                   <Text style={[styles.freeTag, { color: colors.seaglass }]}>FREE</Text>
                 )}
               </View>

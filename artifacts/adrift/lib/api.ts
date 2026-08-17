@@ -17,8 +17,6 @@ import type {
   WriteLetterResponse,
   BottleDetail,
   BottleSummary,
-  City,
-  CityShore,
   Identity,
   IdentityCreateResponse,
   InboxItem,
@@ -26,6 +24,8 @@ import type {
   Reply,
   ReplyResponse,
   ProUnlockResponse,
+  Shore,
+  ShoreView,
 } from '@adrift/shared';
 
 export type {
@@ -34,13 +34,13 @@ export type {
   CorrespondenceSummary,
   BottleDetail,
   BottleSummary,
-  City,
-  CityShore,
   Identity,
   InboxItem,
   ReaderActionResponse,
   Reply,
   ReplyResponse,
+  Shore,
+  ShoreView,
 };
 
 /** Kept as an alias so existing call sites keep reading naturally. */
@@ -107,17 +107,19 @@ async function apiFetch<T>(
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const api = {
-  createIdentity: (deviceId: string, nickname: string, homeCityId?: string) =>
+  // homeShoreId is required by the server: nobody exists in Adrift without a
+  // shore, so onboarding cannot complete without one.
+  createIdentity: (deviceId: string, nickname: string, homeShoreId: string) =>
     apiFetch<IdentityCreateResponse>('/identity', {
       method: 'POST',
-      body: JSON.stringify({ deviceId, nickname, ...(homeCityId ? { homeCityId } : {}) }),
+      body: JSON.stringify({ deviceId, nickname, homeShoreId }),
     }),
 
-  setHomeCity: (token: string, cityId: string) =>
+  setHomeShore: (token: string, shoreId: string) =>
     apiFetch<Identity>('/identity/home', {
       method: 'POST',
       token,
-      body: JSON.stringify({ cityId }),
+      body: JSON.stringify({ shoreId }),
     }),
 
   getMe: (token: string) => apiFetch<Identity>('/identity/me', { token }),
@@ -127,23 +129,26 @@ export const api = {
       `/identity/available?nickname=${encodeURIComponent(nickname)}`
     ),
 
-  getCities: (token?: string | null) => apiFetch<City[]>('/cities', { token }),
+  getShores: (token?: string | null) => apiFetch<Shore[]>('/shores', { token }),
 
-  getCityShore: (cityId: string, token?: string | null) =>
-    apiFetch<CityShore>(`/cities/${cityId}/shore`, { token }),
+  /** A guess at the caller's shore from their IP — only ever a pre-selection. */
+  suggestShore: () => apiFetch<{ shore: Shore | null }>('/shores/suggest'),
+
+  getShore: (shoreId: string, token?: string | null) =>
+    apiFetch<ShoreView>(`/shores/${shoreId}`, { token }),
 
   getMyBottles: (token: string) => apiFetch<BottleSummary[]>('/bottles/mine', { token }),
 
   // `scope` is required by the server and has no default — omitting it makes
   // every cast fail with 400.
-  createBottle: (token: string, text: string, targetCityId?: string) =>
+  createBottle: (token: string, text: string, targetShoreId?: string) =>
     apiFetch<BottleSummary>('/bottles', {
       method: 'POST',
       token,
       body: JSON.stringify(
-        targetCityId
-          ? { text, scope: 'city', targetCityId }
-          : { text, scope: 'global' }
+        targetShoreId
+          ? { text, scope: 'shore', targetShoreId }
+          : { text, scope: 'ocean' }
       ),
     }),
 
@@ -208,11 +213,22 @@ export const api = {
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
-export function useCities(token?: string | null) {
+export function useShores(token?: string | null) {
   return useQuery({
-    queryKey: ['cities'],
-    queryFn: () => api.getCities(token),
+    queryKey: ['shores'],
+    queryFn: () => api.getShores(token),
     staleTime: 60_000,
+  });
+}
+
+/** One IP lookup, cached for the session. Never blocks anything. */
+export function useSuggestedShore(enabled = true) {
+  return useQuery({
+    queryKey: ['shores', 'suggest'],
+    queryFn: () => api.suggestShore(),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
   });
 }
 
@@ -243,11 +259,11 @@ export function useBottle(token: string | null, bottleId: string) {
   });
 }
 
-export function useCityShore(token: string | null | undefined, cityId: string) {
+export function useShore(token: string | null | undefined, shoreId: string) {
   return useQuery({
-    queryKey: ['city', cityId, 'shore'],
-    queryFn: () => api.getCityShore(cityId, token),
-    enabled: !!cityId,
+    queryKey: ['shore', shoreId],
+    queryFn: () => api.getShore(shoreId, token),
+    enabled: !!shoreId,
   });
 }
 

@@ -70,7 +70,7 @@ export function ScopeBadge({ scope }: { scope: BottleScope }) {
   return (
     <View style={[styles.scopeBadge, { backgroundColor: colors.seaglass }]}>
       <Text style={[styles.scopeBadgeText, { color: colors.background }]}>
-        {scope === 'city' ? 'City' : 'Global'}
+        {scope === 'shore' ? 'Shore' : 'Ocean'}
       </Text>
     </View>
   );

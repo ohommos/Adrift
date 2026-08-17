@@ -11,12 +11,25 @@ import {
   bottleTable,
   bottleInteractionTable,
   bottleOpenTable,
-  cityTable,
   replyTable,
 } from "@workspace/db";
-import { eq, and, or, ne, inArray, notInArray, isNotNull, sql, desc, asc } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  gte,
+  lte,
+  ne,
+  inArray,
+  notInArray,
+  isNotNull,
+  sql,
+  desc,
+} from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { randomOceanPoint } from "../lib/geo";
+import { greatCircleKm, offshorePoint, randomOceanPoint } from "../lib/geo";
+import { boundingBox } from "../lib/proximity";
+import { getShore } from "../lib/shores";
 import { UNKNOWN_COUNTRY } from "../lib/geoip";
 import { DIALS } from "../engine/dials";
 import { notify } from "../engine/notify";
@@ -47,45 +60,44 @@ async function findUserOrThrow(id: string) {
 // ---------------------------------------------------------------------------
 export async function createBottle(
   authorId: string,
-  input: { text: string; scope: BottleScope; targetCityId?: string | null }
+  input: { text: string; scope: BottleScope; targetShoreId?: string | null }
 ) {
   const text = input.text?.trim();
   if (!text || text.length === 0 || text.length > MAX_BOTTLE_LENGTH) {
     throw new HttpError(400, `Text must be 1-${MAX_BOTTLE_LENGTH} characters`);
   }
-  if (input.scope !== "city" && input.scope !== "global") {
-    throw new HttpError(400, "scope must be 'city' or 'global'");
+  if (input.scope !== "shore" && input.scope !== "ocean") {
+    throw new HttpError(400, "scope must be 'shore' or 'ocean'");
   }
 
   const author = await findUserOrThrow(authorId);
-  let targetCityId: string | null = null;
-  let origin = randomOceanPoint();
+  const home = await getShore(author.homeShoreId);
+  if (!home) {
+    // Nobody writes from nowhere. Every account picks a shore at onboarding;
+    // an account without one has to pick before it can do anything.
+    throw new HttpError(409, "Pick your shore before you send anything");
+  }
 
-  if (input.scope === "city") {
-    if (!input.targetCityId) {
-      throw new HttpError(400, "targetCityId is required for city-scoped bottles");
+  let targetShoreId: string | null = null;
+  // Ocean bottles are cast from the author's own shore and drift from there,
+  // which is what makes "it drifted past you" mean anything. Shore-addressed
+  // bottles start off the shore they are aimed at.
+  let origin = offshorePoint(home.lat, home.lon, DIALS.CAST_OFFSET_KM);
+
+  if (input.scope === "shore") {
+    if (!input.targetShoreId) {
+      throw new HttpError(400, "targetShoreId is required for shore-scoped bottles");
     }
-    targetCityId = input.targetCityId;
-    const [targetCity] = await db
-      .select()
-      .from(cityTable)
-      .where(eq(cityTable.id, targetCityId))
-      .limit(1);
-    if (!targetCity) throw new HttpError(400, "Unknown targetCityId");
+    const target = await getShore(input.targetShoreId);
+    if (!target) throw new HttpError(400, "Unknown targetShoreId");
+    targetShoreId = target.id;
 
-    // Your own shore is always free; reaching any other port is Pro.
-    // Accounts made before the picker existed have no chosen shore, so they
-    // fall back to the country resolved at signup rather than losing the
-    // free port they already had.
-    const isHomeWater = author.homeCityId
-      ? author.homeCityId === targetCity.id
-      : author.homeCountry !== UNKNOWN_COUNTRY &&
-        targetCity.country === author.homeCountry;
-    if (!isHomeWater && !author.isPro) {
-      throw new HttpError(403, "Sending to another city requires Pro");
+    // Your own shore is always free; writing to any other one is Pro.
+    if (target.id !== home.id && !author.isPro) {
+      throw new HttpError(403, "Writing to another shore requires Pro");
     }
 
-    origin = { lat: targetCity.lat, lon: targetCity.lon };
+    origin = offshorePoint(target.lat, target.lon, DIALS.CAST_OFFSET_KM);
   }
 
   const [bottle] = await db
@@ -95,7 +107,7 @@ export async function createBottle(
       authorId,
       text,
       scope: input.scope,
-      targetCityId,
+      targetShoreId,
       state: "drifting",
       originLat: origin.lat,
       originLon: origin.lon,
@@ -113,7 +125,24 @@ export async function createBottle(
 // ---------------------------------------------------------------------------
 // listInbox
 // ---------------------------------------------------------------------------
+/**
+ * What has washed up where you are.
+ *
+ * Two things can reach you:
+ *  - a bottle addressed to your shore, which nobody else can find; and
+ *  - a bottle drifting in the open ocean that is currently within your
+ *    shore's reach.
+ *
+ * Reach is the whole point of drift: a bottle passes by, and if nobody
+ * fishes it out it moves on to somewhere else. But an empty sea is worse
+ * than an imprecise one, so when there is little near you the horizon widens
+ * until there is something to read. Nothing about any of this is exposed —
+ * the client just gets a list.
+ */
 export async function listInbox(readerId: string): Promise<InboxItem[]> {
+  const reader = await findUserOrThrow(readerId);
+  const home = await getShore(reader.homeShoreId);
+
   const resolvedRows = await db
     .select({ bottleId: bottleInteractionTable.bottleId })
     .from(bottleInteractionTable)
@@ -123,50 +152,143 @@ export async function listInbox(readerId: string): Promise<InboxItem[]> {
         isNotNull(bottleInteractionTable.action)
       )
     );
-
   const resolvedIds = resolvedRows.map((r) => r.bottleId);
 
-  const bottleConditions = and(
+  const select = {
+    id: bottleTable.id,
+    scope: bottleTable.scope,
+    passOnCount: bottleTable.passOnCount,
+    text: bottleTable.text,
+    createdAt: bottleTable.createdAt,
+    currentLat: bottleTable.currentLat,
+    currentLon: bottleTable.currentLon,
+    authorNickname: userTable.nickname,
+    authorFlag: userTable.flag,
+    authorCountry: userTable.homeCountry,
+  };
+
+  /** Everything that is in play for this reader, whatever its distance. */
+  const eligible = and(
     ne(bottleTable.authorId, readerId),
     inArray(bottleTable.state, ["drifting", "nearing", "opened"]),
-    resolvedIds.length > 0 ? notInArray(bottleTable.id, resolvedIds) : undefined
+    resolvedIds.length > 0 ? notInArray(bottleTable.id, resolvedIds) : undefined,
+    // A bottle addressed to a shore belongs to the people who live there.
+    // Anything else is either open ocean or somebody else's mail.
+    home
+      ? or(eq(bottleTable.scope, "ocean"), eq(bottleTable.targetShoreId, home.id))
+      : eq(bottleTable.scope, "ocean")
   );
 
-  const bottles = await db
-    .select({
-      id: bottleTable.id,
-      scope: bottleTable.scope,
-      passOnCount: bottleTable.passOnCount,
-      text: bottleTable.text,
-      createdAt: bottleTable.createdAt,
-      authorNickname: userTable.nickname,
-      authorFlag: userTable.flag,
-      authorCountry: userTable.homeCountry,
-    })
-    .from(bottleTable)
-    .innerJoin(userTable, eq(bottleTable.authorId, userTable.id))
-    .where(bottleConditions)
-    .orderBy(desc(bottleTable.lastEventAt))
-    .limit(20);
+  const runQuery = (where: ReturnType<typeof and>, limit: number) =>
+    db
+      .select(select)
+      .from(bottleTable)
+      .innerJoin(userTable, eq(bottleTable.authorId, userTable.id))
+      .where(where)
+      .orderBy(desc(bottleTable.lastEventAt))
+      .limit(limit);
 
-  const bottleIds = bottles.map((b) => b.id);
+  // Without a shore there is no point to measure from, so fall back to plain
+  // recency. Onboarding does not allow this; only accounts that predate
+  // shores can land here, and the app makes them pick.
+  if (!home) {
+    const rows = await runQuery(eligible, DIALS.INBOX_LIMIT);
+    return decorate(rows, readerId);
+  }
+
+  // Everything addressed to this shore, newest first — always visible, never
+  // subject to reach. It was sent here on purpose.
+  const addressed = await runQuery(
+    and(eligible, eq(bottleTable.targetShoreId, home.id)),
+    DIALS.INBOX_LIMIT
+  );
+
+  // Drifting bottles currently within reach. The box is a cheap prefilter;
+  // the great-circle distance below is what actually decides.
+  const box = boundingBox(home.lat, home.lon, DIALS.REACH_KM);
+  const inBox = await runQuery(
+    and(
+      eligible,
+      eq(bottleTable.scope, "ocean"),
+      gte(bottleTable.currentLat, box.minLat),
+      lte(bottleTable.currentLat, box.maxLat),
+      or(
+        ...box.lonRanges.map(([lo, hi]) =>
+          and(gte(bottleTable.currentLon, lo), lte(bottleTable.currentLon, hi))
+        )
+      )
+    ),
+    DIALS.INBOX_LIMIT * 4
+  );
+
+  const near = inBox
+    .map((b) => ({
+      row: b,
+      km: greatCircleKm(home.lat, home.lon, b.currentLat, b.currentLon),
+    }))
+    .filter((b) => b.km <= DIALS.REACH_KM)
+    .sort((a, b) => a.km - b.km)
+    .map((b) => b.row);
+
+  let ocean = near;
+
+  // Nothing much is passing by. Rather than show an empty shore, widen the
+  // horizon and take the nearest of whatever else is out there.
+  if (addressed.length + ocean.length < DIALS.INBOX_TARGET) {
+    const seen = new Set([...addressed, ...ocean].map((b) => b.id));
+    const rest = await runQuery(
+      and(
+        eligible,
+        eq(bottleTable.scope, "ocean"),
+        seen.size > 0 ? notInArray(bottleTable.id, [...seen]) : undefined
+      ),
+      DIALS.INBOX_LIMIT * 4
+    );
+    const widened = rest
+      .map((b) => ({
+        row: b,
+        km: greatCircleKm(home.lat, home.lon, b.currentLat, b.currentLon),
+      }))
+      .sort((a, b) => a.km - b.km)
+      .slice(0, DIALS.INBOX_TARGET - addressed.length - ocean.length)
+      .map((b) => b.row);
+    ocean = ocean.concat(widened);
+  }
+
+  return decorate([...addressed, ...ocean].slice(0, DIALS.INBOX_LIMIT), readerId);
+}
+
+/** Attach each bottle's opened/sealed state for this reader. */
+async function decorate(
+  rows: Array<{
+    id: string;
+    scope: string;
+    passOnCount: number;
+    text: string;
+    createdAt: Date;
+    authorNickname: string;
+    authorFlag: string;
+    authorCountry: string;
+  }>,
+  readerId: string
+): Promise<InboxItem[]> {
+  const ids = rows.map((b) => b.id);
   const interactions =
-    bottleIds.length > 0
+    ids.length > 0
       ? await db
           .select()
           .from(bottleInteractionTable)
           .where(
             and(
-              inArray(bottleInteractionTable.bottleId, bottleIds),
+              inArray(bottleInteractionTable.bottleId, ids),
               eq(bottleInteractionTable.readerId, readerId)
             )
           )
       : [];
-  const interactionByBottleId = new Map(interactions.map((i) => [i.bottleId, i]));
+  const byBottleId = new Map(interactions.map((i) => [i.bottleId, i]));
 
-  return bottles.map((b) => {
-    const mine = interactionByBottleId.get(b.id);
-    const opened = !!mine;
+  return rows.map((b) => {
+    const opened = byBottleId.has(b.id);
     return {
       id: b.id,
       scope: b.scope as InboxItem["scope"],
@@ -260,7 +382,7 @@ export async function openBottle(bottleId: string, readerId: string): Promise<In
   if (wasFirstOpen) {
     await notify(bottle.authorId, bottle.id, "opened", "Someone opened your bottle.");
   } else if (
-    bottle.scope === "global" &&
+    bottle.scope === "ocean" &&
     // An unresolved country is not a place — telling the author their bottle
     // was "Opened in Unknown." is worse than staying quiet about this open.
     readerCountry !== UNKNOWN_COUNTRY &&
@@ -336,7 +458,12 @@ export async function resolveFate(
       await notify(bottle.authorId, bottle.id, "lost", "Lost at sea.");
     }
   } else {
-    const point = randomOceanPoint();
+    // Back into the water from where it was found, not teleported to a random
+    // spot on the planet. It keeps its heading and carries on from this shore.
+    const reader = await getShore(updatedReader!.homeShoreId);
+    const point = reader
+      ? offshorePoint(reader.lat, reader.lon, DIALS.CAST_OFFSET_KM)
+      : randomOceanPoint();
     await db
       .update(bottleTable)
       .set({

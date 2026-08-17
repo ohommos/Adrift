@@ -26,7 +26,7 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  const { isLoading, hasIdentity } = useIdentity();
+  const { isLoading, hasIdentity, identity } = useIdentity();
   const segments = useSegments();
 
   // Hold the splash until the stored session has been resolved. Hiding it as
@@ -49,17 +49,28 @@ function RootLayoutNav() {
     // non-tab route back to the tabs") would also eject the stack routes the
     // app pushes on top of the tabs — /scope, /read/:id, /tracker/:id, …
     const inOnboarding = segments[0] === 'onboarding';
+    const inPickShore = segments[0] === 'pick-shore';
+    // Nobody in Adrift is placeless. Onboarding has required a shore since
+    // they existed, so this only catches accounts made before that — and it
+    // catches them before they can reach anything else.
+    const needsShore = hasIdentity && !!identity && !identity.homeShoreId;
+
     if (!hasIdentity && !inOnboarding) {
       router.replace('/onboarding');
     } else if (hasIdentity && inOnboarding) {
       router.replace('/(tabs)');
+    } else if (needsShore && !inPickShore) {
+      router.replace('/pick-shore');
+    } else if (!needsShore && inPickShore) {
+      router.replace('/(tabs)');
     }
-  }, [isLoading, hasIdentity, segments]);
+  }, [isLoading, hasIdentity, identity, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+      <Stack.Screen name="pick-shore" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="scope" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="sent" options={{ headerShown: false }} />
       <Stack.Screen name="reply-sent" options={{ headerShown: false }} />
@@ -67,8 +78,8 @@ function RootLayoutNav() {
       <Stack.Screen name="read/[bottleId]" options={{ headerShown: false }} />
       <Stack.Screen name="fate/[bottleId]" options={{ headerShown: false }} />
       <Stack.Screen name="reply/[bottleId]" options={{ headerShown: false }} />
-      <Stack.Screen name="city/[cityId]" options={{ headerShown: false }} />
-      <Stack.Screen name="dive/[cityId]" options={{ headerShown: false, animation: 'fade' }} />
+      <Stack.Screen name="shore/[shoreId]" options={{ headerShown: false }} />
+      <Stack.Screen name="dive/[shoreId]" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="thread/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="write-letter/[id]" options={{ headerShown: false }} />
     </Stack>

@@ -1,6 +1,13 @@
-// Shared domain types between /server and /app. Keep in sync with server/prisma/schema.prisma.
+// Shared domain types between the API server and the app.
 
-export type BottleScope = "city" | "global";
+/**
+ * Where a bottle is aimed.
+ *  - "shore" — addressed to one country's shore; only people who live there
+ *    can find it.
+ *  - "ocean" — cast into the open sea; it drifts, and whoever is near it when
+ *    it passes can fish it out.
+ */
+export type BottleScope = "shore" | "ocean";
 
 export type BottleState = "sealed" | "drifting" | "nearing" | "opened" | "lost";
 
@@ -12,14 +19,22 @@ export type NotificationKind =
   | "lost"
   | "reply";
 
-export interface City {
+/**
+ * A shore is a country. It is the only place concept in Adrift: you live on
+ * one, you can always write to it for free, and every distance in the app is
+ * measured between two of them.
+ */
+export interface Shore {
   id: string;
+  /** ISO 3166-1 alpha-2 — stable identity, safe to key on. */
+  code: string;
   name: string;
   flag: string;
-  /** Used to tell whether this is the caller's home water, which is free. */
-  country: string;
+  /** UN subregion, e.g. "Western Europe". Not currently shown to users. */
+  region: string;
   lat: number;
   lon: number;
+  /** Bottles currently addressed to this shore. */
   bottleCount: number;
 }
 
@@ -27,9 +42,14 @@ export interface Identity {
   id: string;
   nickname: string;
   flag: string;
+  /** Best-effort, from the signup IP. Never used for anything the user pays
+   *  for or is gated by — homeShore is the authority on where someone is. */
   homeCountry: string;
-  /** The shore the user picked. Sending here is free. */
-  homeCityId: string | null;
+  /** The shore the user calls home. Null only on accounts made before shores
+   *  existed; the app must make them pick before anything else. */
+  homeShoreId: string | null;
+  /** Resolved for convenience, so a screen does not have to fetch all shores. */
+  homeShore: Shore | null;
   isPro: boolean;
   credits: number;
   usedFreeReply: boolean;
@@ -38,15 +58,16 @@ export interface Identity {
 export interface IdentityCreateRequest {
   deviceId: string;
   nickname: string;
-  homeCityId?: string;
+  /** Required. Nobody exists in Adrift without a shore. */
+  homeShoreId: string;
 }
 
-export interface SetHomeCityRequest {
-  cityId: string;
+export interface SetHomeShoreRequest {
+  shoreId: string;
 }
 
 /** How long a chosen shore is fixed before it can be changed again. */
-export const HOME_CITY_COOLDOWN_DAYS = 30;
+export const HOME_SHORE_COOLDOWN_DAYS = 30;
 
 export interface IdentityCreateResponse {
   token: string;
@@ -72,7 +93,7 @@ export interface BottleSummary {
 export interface BottleDetail extends BottleSummary {
   originLat: number;
   originLon: number;
-  targetCity: City | null;
+  targetShore: Shore | null;
 }
 
 export interface InboxItem {
@@ -90,7 +111,8 @@ export interface InboxItem {
 export interface CreateBottleRequest {
   text: string;
   scope: BottleScope;
-  targetCityId?: string;
+  /** Required when scope is "shore". */
+  targetShoreId?: string;
 }
 
 export type ReaderActionKind = "break" | "pass";
@@ -167,15 +189,15 @@ export const CROSSING_MAX_MINUTES = 24;
 /** Used when either side has not set a home shore. */
 export const CROSSING_DEFAULT_MINUTES = 12;
 
-export interface CityShoreLetter {
+export interface ShoreLetter {
   nickname: string;
   passOnCount: number;
   text: string;
 }
 
-export interface CityShore {
-  city: City;
-  letters: CityShoreLetter[];
+export interface ShoreView {
+  shore: Shore;
+  letters: ShoreLetter[];
 }
 
 export interface AppNotification {

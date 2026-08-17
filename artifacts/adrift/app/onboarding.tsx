@@ -14,10 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { api, useCities } from '@/lib/api';
+import { api, useShores, useSuggestedShore } from '@/lib/api';
 import { getStoredItem, setStoredItem } from '@/lib/storage';
 import { ShorePicker } from '@/components/ShorePicker';
-import type { City } from '@adrift/shared';
+import type { Shore } from '@adrift/shared';
 
 const DEVICE_ID_KEY = 'adrift.deviceId';
 
@@ -41,8 +41,17 @@ export default function OnboardingScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taken, setTaken] = useState<string | null>(null);
-  const [home, setHome] = useState<City | null>(null);
-  const { data: cities } = useCities(null);
+  const [home, setHome] = useState<Shore | null>(null);
+  const { data: shores } = useShores(null);
+  const { data: suggestion } = useSuggestedShore();
+  const suggested = suggestion?.shore ?? null;
+
+  // Pre-select the guess so the common case is one tap, while leaving it
+  // fully overridable — the guess is wrong often enough (VPNs, carriers,
+  // travel) that it must never be the thing that decides.
+  useEffect(() => {
+    if (!home && suggested) setHome(suggested);
+  }, [home, suggested]);
 
   const trimmed = nickname.trim();
   const wellFormed = trimmed.length >= 2 && trimmed.length <= 24;
@@ -80,7 +89,8 @@ export default function OnboardingScreen() {
     setError(null);
     try {
       const deviceId = await getDeviceId();
-      const { token, identity } = await api.createIdentity(deviceId, trimmed, home?.id);
+      if (!home) return;
+      const { token, identity } = await api.createIdentity(deviceId, trimmed, home.id);
       await setIdentity(identity, token);
       // Navigation is handled by _layout.tsx watching hasIdentity
     } catch (e: unknown) {
@@ -163,18 +173,19 @@ export default function OnboardingScreen() {
         {/* Home shore */}
         <View style={styles.form}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>
-            YOUR HOME WATER
+            YOUR SHORE
           </Text>
           <ShorePicker
-            cities={cities ?? []}
+            shores={shores ?? []}
             selectedId={home?.id ?? null}
             onSelect={setHome}
+            suggested={suggested}
             maxHeight={260}
           />
           <Text style={[styles.hint, { color: colors.mutedForeground }]}>
             {home
-              ? `Bottles you send to ${home.name} are always free. Anywhere else needs Pro.`
-              : 'Pick the shore you call home — sending there is always free.'}
+              ? `${home.flag} ${home.name} is your shore. Writing to it is always free, and it is where bottles find you.`
+              : 'Everyone in Adrift stands on a shore. Pick yours.'}
           </Text>
         </View>
 

@@ -9,25 +9,37 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { City } from '@adrift/shared';
+import type { Shore } from '@adrift/shared';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { useCities, useMyBottles } from '@/lib/api';
+import { useShores, useMyBottles } from '@/lib/api';
+import { findHomeShore } from '@/lib/homeShore';
 import { Globe, type DriftPin } from '@/components/Globe';
 import { Rule, webBottom, webTop } from '@/components/ui/primitives';
 
 export default function PlanetScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { token } = useIdentity();
-  const { data: cities } = useCities(token);
+  const { token, identity } = useIdentity();
+  const { data: shores } = useShores(token);
   const { data: mine } = useMyBottles(token);
   const [showMine, setShowMine] = useState(true);
-  const [selected, setSelected] = useState<City | null>(null);
+  const [selected, setSelected] = useState<Shore | null>(null);
+
+  const home = findHomeShore(shores, identity ?? null);
 
   const total = useMemo(
-    () => (cities ?? []).reduce((a, c) => a + c.bottleCount, 0),
-    [cities]
+    () => (shores ?? []).reduce((a, c) => a + c.bottleCount, 0),
+    [shores]
+  );
+
+  // Every shore on the planet is a dot the globe would have to re-project on
+  // each frame, and an empty one says nothing. Draw the shores with letters
+  // waiting, plus your own so you can always find yourself.
+  const plotted = useMemo(
+    () =>
+      (shores ?? []).filter((s) => s.bottleCount > 0 || s.id === home?.id),
+    [shores, home?.id]
   );
 
   const drifts: DriftPin[] = useMemo(
@@ -44,15 +56,15 @@ export default function PlanetScreen() {
   );
 
   const busiest = useMemo(
-    () => [...(cities ?? [])].sort((a, b) => b.bottleCount - a.bottleCount).slice(0, 4),
-    [cities]
-  );
-  const quietest = useMemo(
-    () => [...(cities ?? [])].sort((a, b) => a.bottleCount - b.bottleCount).slice(0, 2),
-    [cities]
+    () =>
+      [...(shores ?? [])]
+        .filter((s) => s.bottleCount > 0)
+        .sort((a, b) => b.bottleCount - a.bottleCount)
+        .slice(0, 5),
+    [shores]
   );
 
-  const dive = (c: City) => {
+  const dive = (c: Shore) => {
     setSelected(null);
     router.push(`/dive/${c.id}`);
   };
@@ -75,11 +87,11 @@ export default function PlanetScreen() {
 
         <View style={styles.globeWrap}>
           <Globe
-            cities={cities ?? []}
+            shores={plotted}
             drifts={drifts}
             showDrifts={showMine}
             selected={selected}
-            onPickCity={setSelected}
+            onPickShore={setSelected}
           />
         </View>
 
@@ -106,51 +118,59 @@ export default function PlanetScreen() {
           </Pressable>
           <View style={styles.legendItem}>
             <View style={[styles.dot, { backgroundColor: colors.seaglass }]} />
-            <Text style={[styles.legendText, { color: colors.mutedForeground }]}>City activity</Text>
+            <Text style={[styles.legendText, { color: colors.mutedForeground }]}>Letters waiting</Text>
           </View>
         </View>
 
         <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Drag to spin and tilt. Tap a city to dive in.
+          Drag to spin and tilt. Tap a shore to dive in.
         </Text>
 
         <View style={styles.list}>
-          <Rule label="Busiest waters" />
-          {busiest.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => dive(c)}
-              style={[styles.listRow, { backgroundColor: colors.card }]}
-            >
-              <Text style={[styles.listName, { color: colors.foreground }]}>
-                {c.flag} {c.name}
-              </Text>
-              <Text style={[styles.listCount, { color: colors.seaglass }]}>{c.bottleCount}</Text>
-            </Pressable>
-          ))}
+          {home && (
+            <>
+              <Rule label="Your shore" />
+              <Pressable
+                onPress={() => dive(home)}
+                style={[styles.listRow, { backgroundColor: colors.card }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.listName, { color: colors.foreground }]}>
+                    {home.flag} {home.name}
+                  </Text>
+                  <Text style={[styles.listSub, { color: colors.mutedForeground }]}>
+                    Where your bottles wash up. Writing here is always free.
+                  </Text>
+                </View>
+                <Text style={[styles.listCount, { color: colors.seaglass }]}>
+                  {home.bottleCount}
+                </Text>
+              </Pressable>
+            </>
+          )}
 
-          <View style={{ marginTop: 16 }}>
-            <Rule label="Quiet shores" />
+          <View style={{ marginTop: home ? 16 : 0 }}>
+            <Rule label="Busiest shores" />
           </View>
-          {quietest.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => dive(c)}
-              style={[styles.listRow, { backgroundColor: colors.card }]}
-            >
-              <View style={{ flex: 1 }}>
+          {busiest.length === 0 ? (
+            <Text style={[styles.listSub, { color: colors.mutedForeground, paddingHorizontal: 4 }]}>
+              Nothing is waiting on any shore right now. Everything out there is
+              still drifting.
+            </Text>
+          ) : (
+            busiest.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => dive(c)}
+                style={[styles.listRow, { backgroundColor: colors.card }]}
+              >
                 <Text style={[styles.listName, { color: colors.foreground }]}>
                   {c.flag} {c.name}
                 </Text>
-                <Text style={[styles.listSub, { color: colors.mutedForeground }]}>
-                  A bottle here won&apos;t go unnoticed
-                </Text>
-              </View>
-              <Text style={[styles.listCount, { color: colors.mutedForeground }]}>
-                {c.bottleCount}
-              </Text>
-            </Pressable>
-          ))}
+                <Text style={[styles.listCount, { color: colors.seaglass }]}>{c.bottleCount}</Text>
+              </Pressable>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -166,7 +186,7 @@ export default function PlanetScreen() {
               <Text style={[styles.sheetName, { color: colors.foreground }]}>{selected?.name}</Text>
             </View>
             <Text style={[styles.sheetCount, { color: colors.seaglass }]}>
-              {selected?.bottleCount} bottles adrift here
+              {selected?.bottleCount} {selected?.bottleCount === 1 ? 'letter waits' : 'letters wait'} here
             </Text>
             <Pressable
               onPress={() => selected && dive(selected)}

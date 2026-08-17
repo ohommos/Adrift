@@ -1,7 +1,9 @@
-import { db, userTable, cityTable } from "@workspace/db";
+import { db, userTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { DIALS } from "./dials";
-import { createBottle, listInbox, openBottle, replyToBottle, resolveFate } from "../services/bottleActions";
+import { createBottle, listInbox, openBottle, resolveFate } from "../services/bottleActions";
+import { answerBottle } from "../services/correspondence";
+import { allShores } from "../lib/shores";
 
 // Bot personas act through the exact same mechanics a real user would —
 // real bottles, real opens, real break/pass votes — on a timer. This is
@@ -44,27 +46,36 @@ async function actAsBot(botId: string) {
 
   if (unresolved) {
     await openBottle(unresolved.id, botId);
+    // Answering opens a real correspondence, so a lone tester's bottle gets a
+    // letter back that crosses the sea like anyone else's. Answer before
+    // deciding the bottle's fate — breaking it first sinks the thread.
+    if (Math.random() < DIALS.BOT_REPLY_CHANCE) {
+      await answerBottle(unresolved.id, await botUser(botId), pick(REPLY_LINES));
+    }
     const kind = Math.random() < DIALS.BOT_BREAK_WEIGHT ? "break" : "pass";
     await resolveFate(unresolved.id, botId, kind);
-    if (Math.random() < DIALS.BOT_REPLY_CHANCE) {
-      await replyToBottle(unresolved.id, botId, pick(REPLY_LINES));
-    }
     return;
   }
 
   // Nothing to read right now — occasionally seed fresh supply instead.
   if (Math.random() < 0.3) {
-    // A city-scoped bottle needs a target; without one createBottle rejects
-    // it, which silently threw away half of every bot's supply.
-    const cities = await db.select({ id: cityTable.id }).from(cityTable);
-    const targetCity = cities.length > 0 && Math.random() < 0.5 ? pick(cities) : null;
+    // Half the time addressed at some shore, half cast into the open ocean,
+    // so both the "letters waiting here" and the drift population stay alive.
+    const shores = await allShores();
+    const target = shores.length > 0 && Math.random() < 0.5 ? pick(shores) : null;
     await createBottle(botId, {
       text: pick(BOTTLE_LINES),
-      ...(targetCity
-        ? { scope: "city" as const, targetCityId: targetCity.id }
-        : { scope: "global" as const }),
+      ...(target
+        ? { scope: "shore" as const, targetShoreId: target.id }
+        : { scope: "ocean" as const }),
     });
   }
+}
+
+async function botUser(botId: string) {
+  const [row] = await db.select().from(userTable).where(eq(userTable.id, botId)).limit(1);
+  if (!row) throw new Error(`bot ${botId} vanished`);
+  return row;
 }
 
 export async function runBotTick() {

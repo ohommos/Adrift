@@ -14,13 +14,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { G, Path, Rect } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { useCities, useCityShore } from '@/lib/api';
-import { canSendToCity, findHomeCity } from '@/lib/homeCity';
+import { useShore, useShores } from '@/lib/api';
+import { canSendToShore, findHomeShore } from '@/lib/homeShore';
 import { useCompose } from '@/context/ComposeContext';
 import { showAlert } from '@/lib/alert';
 import { Paper, Rule, TopBar, patina, webBottom, webTop } from '@/components/ui/primitives';
 
-/** Bottles bobbing in the harbour, as many as the port is busy. */
+/** Bottles bobbing in the shallows, as many as the shore is busy. */
 function Harbour({ count }: { count: number }) {
   const colors = useColors();
   const n = Math.min(Math.round(count / 28) + 2, 14);
@@ -50,32 +50,32 @@ function Harbour({ count }: { count: number }) {
   );
 }
 
-export default function CityShoreScreen() {
-  const { cityId } = useLocalSearchParams<{ cityId: string }>();
+export default function ShoreScreen() {
+  const { shoreId } = useLocalSearchParams<{ shoreId: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token, identity } = useIdentity();
-  const { data, isLoading } = useCityShore(token, cityId ?? '');
-  const { data: cities } = useCities(token);
-  const { setTargetCityId } = useCompose();
+  const { data, isLoading } = useShore(token, shoreId ?? '');
+  const { data: shores } = useShores(token);
+  const { setTargetShoreId } = useCompose();
 
   const isPro = !!identity?.isPro;
-  const home = findHomeCity(cities, identity);
-  const isHome = !!home && home.id === cityId;
-  // Home water is free for everyone; other ports need Pro.
-  const canSend = data ? canSendToCity(data.city, home, isPro) : false;
-  const count = data?.city.bottleCount ?? 0;
+  const home = findHomeShore(shores, identity);
+  const isHome = !!home && home.id === shoreId;
+  // Your own shore is free for everyone; any other one needs Pro.
+  const canSend = data ? canSendToShore(data.shore, home, isPro) : false;
+  const count = data?.shore.bottleCount ?? 0;
   const quiet = count < 20;
 
   const throwHere = () => {
     if (!canSend) {
       showAlert(
         'Pro required',
-        `Your own shore is always free. Sending to ${data?.city.name ?? 'another city'} needs Pro — $5, once, forever.`
+        `Your own shore is always free. Writing to ${data?.shore.name ?? 'another shore'} needs Pro — $5, once, forever.`
       );
       return;
     }
-    setTargetCityId(cityId ?? null);
+    setTargetShoreId(shoreId ?? null);
     router.push('/(tabs)/scrawl');
   };
 
@@ -83,9 +83,13 @@ export default function CityShoreScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={{ paddingTop: insets.top + webTop }}>
         <TopBar
-          title={data?.city.name ?? ''}
+          title={data?.shore.name ?? ''}
           onBack={() => router.back()}
-          sub={data ? `${data.city.flag}  |  ${count} bottles adrift` : null}
+          sub={
+            data
+              ? `${data.shore.flag}  |  ${count} ${count === 1 ? 'letter waiting' : 'letters waiting'}`
+              : null
+          }
         />
       </View>
 
@@ -148,15 +152,15 @@ export default function CityShoreScreen() {
               style={[styles.ctaText, { color: canSend ? colors.background : colors.primary }]}
               numberOfLines={1}
             >
-              Throw a bottle into {data.city.name}
+              Throw a bottle onto {data.shore.name}
             </Text>
           </Pressable>
           <Text style={[styles.ctaNote, { color: colors.mutedForeground }]}>
             {isHome
-              ? 'This is your home water — always free.'
+              ? 'This is your own shore — always free.'
               : isPro
-                ? 'Pro lets you send to any city.'
-                : 'Sending to another city is a Pro feature.'}
+                ? 'Pro lets you write to any shore on the planet.'
+                : 'Writing to another shore is a Pro feature.'}
           </Text>
         </ScrollView>
       )}

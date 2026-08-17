@@ -3,19 +3,19 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { useCities } from '@/lib/api';
+import { useShores } from '@/lib/api';
 import { Globe } from '@/components/Globe';
 
 /**
- * The plunge from the planet to a city's shore: the globe rushes toward the
- * viewer and fades while the port's name rises.
+ * The plunge from the planet down to a shore: the globe rushes toward the
+ * viewer and fades while the shore's name rises.
  */
 export default function DiveScreen() {
-  const { cityId } = useLocalSearchParams<{ cityId: string }>();
+  const { shoreId } = useLocalSearchParams<{ shoreId: string }>();
   const colors = useColors();
   const { token } = useIdentity();
-  const { data: cities } = useCities(token);
-  const city = cities?.find((c) => c.id === cityId);
+  const { data: shores } = useShores(token);
+  const shore = shores?.find((s) => s.id === shoreId);
 
   const zoom = useRef(new Animated.Value(0)).current;
   const label = useRef(new Animated.Value(0)).current;
@@ -36,10 +36,10 @@ export default function DiveScreen() {
     }).start();
 
     const t = setTimeout(() => {
-      if (cityId) router.replace(`/city/${cityId}`);
+      if (shoreId) router.replace(`/shore/${shoreId}`);
     }, 1250);
     return () => clearTimeout(t);
-  }, [cityId, zoom, label]);
+  }, [shoreId, zoom, label]);
 
   const scale = zoom.interpolate({ inputRange: [0, 1], outputRange: [1, 6] });
   const fade = zoom.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
@@ -49,11 +49,11 @@ export default function DiveScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Animated.View style={{ transform: [{ scale }], opacity: fade }}>
         <Globe
-          cities={city ? [city] : []}
+          shores={shore ? [shore] : []}
           showDrifts={false}
           interactive={false}
-          fixedRotation={city ? -city.lon : 0}
-          fixedTilt={city ? city.lat * 0.8 : 12}
+          fixedRotation={shore ? -shore.lon : 0}
+          fixedTilt={shore ? shore.lat * 0.8 : 12}
           size={280}
         />
       </Animated.View>
@@ -61,8 +61,8 @@ export default function DiveScreen() {
       <Animated.View
         style={[styles.label, { opacity: label, transform: [{ translateY: labelRise }] }]}
       >
-        <Text style={styles.flag}>{city?.flag}</Text>
-        <Text style={[styles.name, { color: colors.foreground }]}>{city?.name}</Text>
+        <Text style={styles.flag}>{shore?.flag}</Text>
+        <Text style={[styles.name, { color: colors.foreground }]}>{shore?.name}</Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>Approaching the shore…</Text>
       </Animated.View>
     </View>

@@ -3,32 +3,37 @@ import type {
   BottleDetail,
   BottleSummary,
   Identity,
+  Shore as SharedShore,
 } from "@adrift/shared";
-import type { Bottle, City, Notification, User } from "@workspace/db";
+import type { Bottle, Notification, Shore, User } from "@workspace/db";
 import { nearestOceanName } from "./geo";
+import { getShore } from "./shores";
 import { UNKNOWN_COUNTRY } from "./geoip";
 import { db, bottleOpenTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 
-export function serializeCity(city: City, bottleCount = 0) {
+export function serializeShore(shore: Shore, bottleCount = 0): SharedShore {
   return {
-    id: city.id,
-    name: city.name,
-    flag: city.flag,
-    country: city.country,
-    lat: city.lat,
-    lon: city.lon,
+    id: shore.id,
+    code: shore.code,
+    name: shore.name,
+    flag: shore.flag,
+    region: shore.region,
+    lat: shore.lat,
+    lon: shore.lon,
     bottleCount,
   };
 }
 
-export function serializeIdentity(user: User): Identity {
+export async function serializeIdentity(user: User): Promise<Identity> {
+  const home = await getShore(user.homeShoreId);
   return {
     id: user.id,
     nickname: user.nickname,
     flag: user.flag,
     homeCountry: user.homeCountry,
-    homeCityId: user.homeCityId ?? null,
+    homeShoreId: user.homeShoreId ?? null,
+    homeShore: home ? serializeShore(home) : null,
     isPro: user.isPro,
     credits: user.credits,
     usedFreeReply: user.usedFreeReply,
@@ -56,10 +61,10 @@ export async function bottleCountries(bottleId: string): Promise<string[]> {
 }
 
 export async function serializeBottleSummary(bottle: Bottle): Promise<BottleSummary> {
-  const countries = bottle.scope === "global" ? await bottleCountries(bottle.id) : [];
+  const countries = bottle.scope === "ocean" ? await bottleCountries(bottle.id) : [];
   return {
     id: bottle.id,
-    scope: bottle.scope as "city" | "global",
+    scope: bottle.scope as BottleSummary["scope"],
     state: bottle.state as BottleSummary["state"],
     region: nearestOceanName(bottle.currentLat, bottle.currentLon),
     progress: bottle.progress,
@@ -72,16 +77,14 @@ export async function serializeBottleSummary(bottle: Bottle): Promise<BottleSumm
   };
 }
 
-export async function serializeBottleDetail(
-  bottle: Bottle,
-  targetCity: City | null
-): Promise<BottleDetail> {
+export async function serializeBottleDetail(bottle: Bottle): Promise<BottleDetail> {
   const summary = await serializeBottleSummary(bottle);
+  const target = await getShore(bottle.targetShoreId);
   return {
     ...summary,
     originLat: bottle.originLat,
     originLon: bottle.originLon,
-    targetCity: targetCity ? serializeCity(targetCity) : null,
+    targetShore: target ? serializeShore(target) : null,
   };
 }
 

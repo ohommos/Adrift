@@ -1,100 +1,158 @@
 import { randomBytes, randomUUID } from "crypto";
-import { db, cityTable, userTable } from "@workspace/db";
+import { db, shoreTable, userTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { SHORES, flagOf } from "./data/shores";
+import { invalidateShoreCache } from "./lib/shores";
 import { logger } from "./lib/logger";
 
-// Cold-start data for the Drizzle/Postgres stack. The original Prisma seed
-// (server/prisma/seed.ts) never made the migration, which left a fresh
-// deployment with no cities and no bot personas — an empty Chart, an empty
-// Haul, and no drift activity for the first real user to find.
+// Cold-start data for the Drizzle/Postgres stack, plus the one-time backfill
+// that carries a database seeded under the old city model onto shores.
 
-const CITIES = [
-  { name: "Tokyo", country: "Japan", flag: "🇯🇵", lat: 35.7, lon: 139.7 },
-  { name: "Mumbai", country: "India", flag: "🇮🇳", lat: 19.1, lon: 72.9 },
-  { name: "São Paulo", country: "Brazil", flag: "🇧🇷", lat: -23.5, lon: -46.6 },
-  { name: "New York", country: "United States", flag: "🇺🇸", lat: 40.7, lon: -74.0 },
-  { name: "Seoul", country: "South Korea", flag: "🇰🇷", lat: 37.6, lon: 127.0 },
-  { name: "Lagos", country: "Nigeria", flag: "🇳🇬", lat: 6.5, lon: 3.4 },
-  { name: "Jakarta", country: "Indonesia", flag: "🇮🇩", lat: -6.2, lon: 106.8 },
-  { name: "London", country: "United Kingdom", flag: "🇬🇧", lat: 51.5, lon: -0.1 },
-  { name: "Mexico City", country: "Mexico", flag: "🇲🇽", lat: 19.4, lon: -99.1 },
-  { name: "Sydney", country: "Australia", flag: "🇦🇺", lat: -33.9, lon: 151.2 },
-  { name: "Cairo", country: "Egypt", flag: "🇪🇬", lat: 30.0, lon: 31.2 },
-  { name: "Buenos Aires", country: "Argentina", flag: "🇦🇷", lat: -34.6, lon: -58.4 },
-  { name: "Cape Town", country: "South Africa", flag: "🇿🇦", lat: -33.9, lon: 18.4 },
-  { name: "Porto", country: "Portugal", flag: "🇵🇹", lat: 41.1, lon: -8.6 },
-  { name: "Reykjavík", country: "Iceland", flag: "🇮🇸", lat: 64.1, lon: -21.9 },
-] as const;
-
-// (nickname, home city) — spread across cities so every shore has residents
-// reading and writing bottles.
+// (nickname, ISO code) — personas spread across the planet so a lone tester
+// always has somebody writing. They are deliberately few: proximity widens
+// its own horizon when the sea near a shore is empty, so covering all 196
+// shores with bots would be solving a problem that solves itself.
 const BOTS: Array<[string, string]> = [
-  ["lastbus", "Tokyo"],
-  ["kotori", "Tokyo"],
-  ["mothlight", "Tokyo"],
-  ["farlight", "Mumbai"],
-  ["tin_can", "Mumbai"],
-  ["driftwood", "São Paulo"],
-  ["riogrey", "São Paulo"],
-  ["coldwater", "Reykjavík"],
-  ["lowsun", "Reykjavík"],
-  ["azulejo", "Porto"],
-  ["gullwing", "Porto"],
-  ["eastriver", "New York"],
-  ["stoop_light", "New York"],
-  ["hanok_blue", "Seoul"],
-  ["lagos_late", "Lagos"],
-  ["monsoon", "Jakarta"],
-  ["thameside", "London"],
-  ["zocalo", "Mexico City"],
-  ["harbourhaze", "Sydney"],
-  ["nileflow", "Cairo"],
-  ["porteno", "Buenos Aires"],
-  ["tablemtn", "Cape Town"],
+  ["lastbus", "JP"],
+  ["kotori", "JP"],
+  ["mothlight", "JP"],
+  ["farlight", "IN"],
+  ["tin_can", "IN"],
+  ["driftwood", "BR"],
+  ["riogrey", "BR"],
+  ["coldwater", "IS"],
+  ["lowsun", "IS"],
+  ["azulejo", "PT"],
+  ["gullwing", "PT"],
+  ["eastriver", "US"],
+  ["stoop_light", "US"],
+  ["hanok_blue", "KR"],
+  ["lagos_late", "NG"],
+  ["monsoon", "ID"],
+  ["thameside", "GB"],
+  ["zocalo", "MX"],
+  ["harbourhaze", "AU"],
+  ["nileflow", "EG"],
+  ["porteno", "AR"],
+  ["tablemtn", "ZA"],
 ];
 
 /**
+ * Moves a database seeded under the old City model onto Shore. Every
+ * statement is idempotent and only touches rows that have not been migrated,
+ * so it is safe on every boot and on a database that never had cities.
+ *
+ * The City and Reply tables are deliberately left in place — dropping them is
+ * a separate, deliberate step once every deployment has run this.
+ */
+async function backfillFromCities(): Promise<void> {
+  // The City table may not exist at all on a fresh database.
+  const [{ present }] = (await db.execute(
+    sql`select to_regclass('public."City"') is not null as present`
+  )).rows as Array<{ present: boolean }>;
+
+  if (present) {
+    // A user's shore is the country their old home city was in.
+    await db.execute(sql`
+      update "User" u
+         set "homeShoreId" = s.id,
+             "homeShoreChangedAt" = coalesce(u."homeCityChangedAt", now())
+        from "City" c
+        join "Shore" s on s.name = c.country
+       where u."homeShoreId" is null
+         and u."homeCityId" = c.id
+    `);
+
+    // A bottle addressed to a city is now addressed to that city's shore.
+    await db.execute(sql`
+      update "Bottle" b
+         set "targetShoreId" = s.id
+        from "City" c
+        join "Shore" s on s.name = c.country
+       where b."targetShoreId" is null
+         and b."targetCityId" = c.id
+    `);
+  }
+
+  // Anyone whose country was resolved from their IP but who never picked a
+  // city still gets a shore, rather than being left placeless.
+  await db.execute(sql`
+    update "User" u
+       set "homeShoreId" = s.id
+      from "Shore" s
+     where u."homeShoreId" is null
+       and s.name = u."homeCountry"
+  `);
+
+  // Scope vocabulary: city -> shore, global -> ocean.
+  await db.execute(sql`update "Bottle" set scope = 'shore' where scope = 'city'`);
+  await db.execute(sql`update "Bottle" set scope = 'ocean' where scope = 'global'`);
+
+  // A bottle addressed to a place that has no shore (a city in a country we
+  // do not carry) has nowhere to land. Let it drift instead of stranding it.
+  await db.execute(sql`
+    update "Bottle"
+       set scope = 'ocean', "targetShoreId" = null
+     where scope = 'shore' and "targetShoreId" is null
+  `);
+
+  // Keep the denormalised country in step with the shore that now owns it.
+  await db.execute(sql`
+    update "User" u
+       set "homeCountry" = s.name
+      from "Shore" s
+     where u."homeShoreId" = s.id
+       and u."homeCountry" <> s.name
+  `);
+}
+
+/**
  * Idempotent — safe to run on every boot and safe to run concurrently from
- * more than one instance, since both inserts defer to the unique constraints
- * on City.name and User.deviceId.
+ * more than one instance, since the inserts defer to the unique constraints
+ * on Shore.code and User.deviceId.
  */
 export async function ensureSeeded(): Promise<void> {
   await db
-    .insert(cityTable)
+    .insert(shoreTable)
     .values(
-      CITIES.map((c) => ({
+      SHORES.map((s) => ({
         id: randomUUID(),
-        name: c.name,
-        country: c.country,
-        flag: c.flag,
-        lat: c.lat,
-        lon: c.lon,
-        isSeedHome: true,
+        code: s.code,
+        name: s.name,
+        region: s.region,
+        flag: flagOf(s.code),
+        lat: s.lat,
+        lon: s.lon,
       }))
     )
-    .onConflictDoNothing({ target: cityTable.name });
+    .onConflictDoNothing({ target: shoreTable.code });
 
-  const cityByName = new Map<string, (typeof CITIES)[number]>(
-    CITIES.map((c) => [c.name, c])
-  );
+  invalidateShoreCache();
+
+  await backfillFromCities();
+
+  const shores = await db.select().from(shoreTable);
+  const byCode = new Map(shores.map((s) => [s.code, s]));
 
   await db
     .insert(userTable)
     .values(
-      BOTS.flatMap(([nickname, cityName]) => {
-        const city = cityByName.get(cityName);
-        if (!city) return [];
+      BOTS.flatMap(([nickname, code]) => {
+        const shore = byCode.get(code);
+        if (!shore) return [];
         return [
           {
             id: randomUUID(),
             deviceId: `bot:${nickname}`,
             token: randomBytes(24).toString("hex"),
             nickname,
-            flag: city.flag,
-            homeCountry: city.country,
+            flag: shore.flag,
+            homeCountry: shore.name,
+            homeShoreId: shore.id,
+            homeShoreChangedAt: new Date(),
             isBot: true,
-            // Bots cast city-scoped bottles as well as global ones, and
-            // createBottle gates city scope behind Pro.
+            // Bots address bottles at shores other than their own, and
+            // createBottle gates that behind Pro.
             isPro: true,
           },
         ];
@@ -102,13 +160,35 @@ export async function ensureSeeded(): Promise<void> {
     )
     .onConflictDoNothing({ target: userTable.deviceId });
 
-  const [{ cities }] = await db
-    .select({ cities: sql<number>`count(*)::int` })
-    .from(cityTable);
+  // Bots created before shores existed have no home; give them one.
+  for (const [nickname, code] of BOTS) {
+    const shore = byCode.get(code);
+    if (!shore) continue;
+    await db
+      .update(userTable)
+      .set({
+        homeShoreId: shore.id,
+        homeShoreChangedAt: new Date(),
+        homeCountry: shore.name,
+        flag: shore.flag,
+        isPro: true,
+      })
+      .where(
+        sql`${userTable.deviceId} = ${`bot:${nickname}`} and ${userTable.homeShoreId} is null`
+      );
+  }
+
   const [{ bots }] = await db
     .select({ bots: sql<number>`count(*)::int` })
     .from(userTable)
     .where(eq(userTable.isBot, true));
+  const [{ placeless }] = await db
+    .select({ placeless: sql<number>`count(*)::int` })
+    .from(userTable)
+    .where(sql`${userTable.homeShoreId} is null`);
 
-  logger.info({ cities, bots }, "[seed] cold-start data ready");
+  logger.info(
+    { shores: shores.length, bots, placeless },
+    "[seed] cold-start data ready"
+  );
 }

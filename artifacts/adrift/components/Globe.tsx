@@ -7,7 +7,7 @@ import Svg, {
   RadialGradient,
   Stop,
 } from 'react-native-svg';
-import type { City } from '@adrift/shared';
+import type { Shore } from '@adrift/shared';
 import { useColors } from '@/hooks/useColors';
 
 const LAND: Array<Array<[number, number]>> = [
@@ -53,21 +53,22 @@ export interface DriftPin {
  * few seconds after you let go.
  */
 export function Globe({
-  cities,
+  shores,
   drifts = [],
   showDrifts = true,
   selected,
-  onPickCity,
+  onPickShore,
   size = 320,
   interactive = true,
   fixedRotation,
   fixedTilt,
 }: {
-  cities: City[];
+  /** Only the shores worth drawing — every dot is re-projected on each frame. */
+  shores: Shore[];
   drifts?: DriftPin[];
   showDrifts?: boolean;
-  selected?: City | null;
-  onPickCity?: (city: City) => void;
+  selected?: Shore | null;
+  onPickShore?: (shore: Shore) => void;
   size?: number;
   interactive?: boolean;
   fixedRotation?: number;
@@ -210,14 +211,14 @@ export function Globe({
             );
           })}
 
-        {cities.map((c) => {
+        {shores.map((c) => {
           const q = proj(c.lat, c.lon, rot, tilt, R, cx, cy);
           if (!q.vis) return null;
           const isSel = selected?.id === c.id;
           const r = 2 + Math.sqrt(Math.max(c.bottleCount, 1)) * 0.32;
           return (
             <React.Fragment key={c.id}>
-              <Circle cx={q.x} cy={q.y} r={r + 10} fill="transparent" onPress={() => onPickCity?.(c)} />
+              <Circle cx={q.x} cy={q.y} r={r + 10} fill="transparent" onPress={() => onPickShore?.(c)} />
               <Circle cx={q.x} cy={q.y} r={r} fill={colors.seaglass} opacity={0.16 + q.z * 0.28} />
               <Circle
                 cx={q.x}

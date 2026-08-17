@@ -12,8 +12,8 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useIdentity } from '@/context/IdentityContext';
-import { api, useCities, useMyBottles } from '@/lib/api';
-import { findHomeCity } from '@/lib/homeCity';
+import { api, useShores, useMyBottles } from '@/lib/api';
+import { findHomeShore } from '@/lib/homeShore';
 import { ShorePicker } from '@/components/ShorePicker';
 import { showAlert, showConfirm } from '@/lib/alert';
 import { CREDITS_PER_REPLY } from '@/lib/limits';
@@ -24,18 +24,18 @@ export default function YouScreen() {
   const insets = useSafeAreaInsets();
   const { identity, token, refreshIdentity } = useIdentity();
   const { data: mine } = useMyBottles(token);
-  const { data: cities } = useCities(token);
+  const { data: shores } = useShores(token);
   const [unlocking, setUnlocking] = useState(false);
   const [movingShore, setMovingShore] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const home = findHomeCity(cities, identity ?? null);
+  const home = findHomeShore(shores, identity ?? null);
 
-  const moveShore = async (cityId: string) => {
+  const moveShore = async (shoreId: string) => {
     if (!token || saving) return;
     setSaving(true);
     try {
-      await api.setHomeCity(token, cityId);
+      await api.setHomeShore(token, shoreId);
       await refreshIdentity();
       setMovingShore(false);
     } catch (e: unknown) {
@@ -62,7 +62,7 @@ export default function YouScreen() {
     if (!token || unlocking) return;
     showConfirm(
       'Adrift Pro',
-      'Go Pro for $5 - once, forever. Unlimited replies and send to any city in the world.',
+      'Go Pro for $5 - once, forever. Unlimited replies, and write to any shore on the planet.',
       'Unlock',
       async () => {
         setUnlocking(true);
@@ -103,7 +103,7 @@ export default function YouScreen() {
           </View>
           <Text style={[styles.nick, { color: colors.foreground }]}>{identity.nickname}</Text>
           <Text style={[styles.home, { color: colors.mutedForeground }]}>
-            {identity.homeCountry === 'Unknown' ? 'Somewhere at sea' : identity.homeCountry}
+            {home ? `${home.flag} ${home.name}` : 'No shore yet'}
           </Text>
         </View>
 
@@ -117,7 +117,7 @@ export default function YouScreen() {
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Rule label="Your home water" />
+          <Rule label="Your shore" />
           <View style={styles.homeRow}>
             <Text style={styles.homeFlag}>{home?.flag ?? '🌊'}</Text>
             <View style={{ flex: 1 }}>
@@ -125,7 +125,9 @@ export default function YouScreen() {
                 {home?.name ?? 'Not set'}
               </Text>
               <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-                {home ? 'Sending here is always free.' : 'Pick a shore to send to for free.'}
+                {home
+                  ? 'Writing here is always free, and it is where bottles find you.'
+                  : 'Pick your shore — everyone in Adrift stands on one.'}
               </Text>
             </View>
             <Pressable
@@ -185,7 +187,7 @@ export default function YouScreen() {
           </View>
           <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
             {identity.isPro
-              ? 'Unlimited replies and any city on the planet.'
+              ? 'Unlimited replies and any shore on the planet.'
               : 'Skip the three pass-ons. Reply to anyone, any time.'}
           </Text>
           {!identity.isPro && (
@@ -216,15 +218,16 @@ export default function YouScreen() {
             onPress={(e) => e.stopPropagation()}
           >
             <View style={[styles.grabber, { backgroundColor: colors.mutedForeground }]} />
-            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Your home water</Text>
+            <Text style={[styles.sheetTitle, { color: colors.foreground }]}>Your shore</Text>
             <Text style={[styles.sheetNote, { color: colors.mutedForeground }]}>
-              Sending here is free. You can move again after 30 days.
+              Writing here is free, and it decides what drifts within your
+              reach. You can move again after 30 days.
             </Text>
             {saving ? (
               <ActivityIndicator color={colors.primary} style={{ marginVertical: 28 }} />
             ) : (
               <ShorePicker
-                cities={cities ?? []}
+                shores={shores ?? []}
                 selectedId={home?.id ?? null}
                 onSelect={(c) => moveShore(c.id)}
                 maxHeight={340}

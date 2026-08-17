@@ -9,7 +9,6 @@ import { CREDITS_PER_REPLY, MAX_BOTTLE_LENGTH } from "@adrift/shared";
 import {
   db,
   bottleTable,
-  cityTable,
   correspondenceTable,
   letterTable,
   userTable,
@@ -18,18 +17,13 @@ import {
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { crossingMinutes } from "../lib/crossing";
+import { getShore } from "../lib/shores";
 import { notify } from "../engine/notify";
 import { HttpError } from "./bottleActions";
 
-/** The home shore of a user, or null if they never picked one. */
-async function shoreOf(user: Pick<User, "homeCityId">) {
-  if (!user.homeCityId) return null;
-  const [city] = await db
-    .select({ lat: cityTable.lat, lon: cityTable.lon })
-    .from(cityTable)
-    .where(eq(cityTable.id, user.homeCityId))
-    .limit(1);
-  return city ?? null;
+/** The home shore of a user, or null on an account that predates shores. */
+async function shoreOf(user: Pick<User, "homeShoreId">) {
+  return getShore(user.homeShoreId);
 }
 
 function otherParty(c: Correspondence, meId: string) {

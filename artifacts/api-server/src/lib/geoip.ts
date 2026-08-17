@@ -1,8 +1,9 @@
 import { logger } from "./logger";
 
-// Country lookup for a request IP. Kept off the signup path: a third-party
-// service being slow or unreachable must not slow down or fail account
-// creation, so callers resolve the country after the response is sent.
+// Country lookup for a request IP. Only ever used to pre-select an entry in
+// the shore picker — never to decide where someone lives. A third-party
+// service being slow, wrong, or unreachable therefore costs nothing but a
+// scroll, which is the whole reason the shore is a choice and not a guess.
 
 export const UNKNOWN_COUNTRY = "Unknown";
 
@@ -12,7 +13,8 @@ const LOOKUP_TIMEOUT_MS = 3000;
 // restricted egress, or a paid plan, can point somewhere else. `{ip}` is
 // substituted with the address being looked up.
 const PROVIDER_URL =
-  process.env["GEOIP_URL"] ?? "https://ipwho.is/{ip}?fields=success,country";
+  process.env["GEOIP_URL"] ??
+  "https://ipwho.is/{ip}?fields=success,country,country_code";
 
 function parseIpv4(ip: string): number[] | null {
   const parts = ip.split(".");
@@ -51,26 +53,34 @@ export function isNonRoutableIp(ip: string): boolean {
   return false;
 }
 
-/** Best-effort country name, or `UNKNOWN_COUNTRY` if it cannot be determined. */
-export async function detectCountry(ip: string): Promise<string> {
+/**
+ * Best-effort ISO 3166-1 alpha-2 code for an address, or null. A code rather
+ * than a name because Shore.code is the same standard, so no fuzzy matching
+ * of "United States" against "United States of America" is needed.
+ */
+export async function detectCountryCode(ip: string): Promise<string | null> {
   const clean = ip.replace(/^::ffff:/, "").trim();
-  if (isNonRoutableIp(clean)) return UNKNOWN_COUNTRY;
+  if (isNonRoutableIp(clean)) return null;
 
   try {
     const res = await fetch(PROVIDER_URL.replace("{ip}", encodeURIComponent(clean)), {
       signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
     });
-    if (!res.ok) return UNKNOWN_COUNTRY;
+    if (!res.ok) return null;
     const data = (await res.json()) as {
       success?: boolean;
       status?: string;
-      country?: string;
+      country_code?: string;
+      countryCode?: string;
     };
     const ok = data.success === true || data.status === "success";
-    return ok && data.country ? data.country : UNKNOWN_COUNTRY;
+    const code = data.country_code ?? data.countryCode;
+    return ok && typeof code === "string" && code.length === 2
+      ? code.toUpperCase()
+      : null;
   } catch (err) {
     logger.debug({ err }, "[geoip] lookup failed");
-    return UNKNOWN_COUNTRY;
+    return null;
   }
 }
 

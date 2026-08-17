@@ -3,26 +3,9 @@ import {
   CROSSING_MAX_MINUTES,
   CROSSING_MIN_MINUTES,
 } from "@adrift/shared";
+import { HALF_CIRCUMFERENCE_KM, greatCircleKm } from "./geo";
 
-const EARTH_RADIUS_KM = 6371;
-/** Antipodal distance — the furthest two points on the planet can be. */
-const HALF_CIRCUMFERENCE_KM = Math.PI * EARTH_RADIUS_KM;
-
-export function greatCircleKm(
-  aLat: number,
-  aLon: number,
-  bLat: number,
-  bLon: number
-): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const la1 = toRad(aLat);
-  const la2 = toRad(bLat);
-  const dLa = toRad(bLat - aLat);
-  const dLo = toRad(bLon - aLon);
-  const h =
-    Math.sin(dLa / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLo / 2) ** 2;
-  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
-}
+export { greatCircleKm };
 
 /**
  * How long a letter spends at sea, from the distance between the two writers'

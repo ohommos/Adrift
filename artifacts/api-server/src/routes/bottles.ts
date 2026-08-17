@@ -6,7 +6,7 @@ import type {
   ReaderActionResponse,
   ReplyRequest,
 } from "@adrift/shared";
-import { db, bottleTable, bottleInteractionTable, cityTable, replyTable } from "@workspace/db";
+import { db, bottleTable, bottleInteractionTable, replyTable } from "@workspace/db";
 import { eq, and, or, desc } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { serializeBottleDetail, serializeBottleSummary } from "../lib/serialize";
@@ -33,7 +33,7 @@ bottlesRouter.post("/bottles", requireAuth, async (req, res) => {
     const bottle = await createBottle(req.user!.id, {
       text: body.text ?? "",
       scope: body.scope as BottleScope,
-      targetCityId: body.targetCityId,
+      targetShoreId: body.targetShoreId,
     });
     res.status(201).json(await serializeBottleSummary(bottle));
   } catch (e) {
@@ -83,17 +83,7 @@ bottlesRouter.get("/bottles/:id", requireAuth, async (req, res) => {
     }
   }
 
-  let targetCity = null;
-  if (row.targetCityId) {
-    const [city] = await db
-      .select()
-      .from(cityTable)
-      .where(eq(cityTable.id, row.targetCityId))
-      .limit(1);
-    targetCity = city ?? null;
-  }
-
-  res.json(await serializeBottleDetail(row, targetCity));
+  res.json(await serializeBottleDetail(row));
 });
 
 bottlesRouter.post("/bottles/:id/open", requireAuth, async (req, res) => {

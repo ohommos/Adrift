@@ -3,15 +3,14 @@ import { Router } from "express";
 import type {
   IdentityCreateRequest,
   IdentityCreateResponse,
-  SetHomeCityRequest,
+  SetHomeShoreRequest,
 } from "@adrift/shared";
-import { HOME_CITY_COOLDOWN_DAYS } from "@adrift/shared";
-import { db, userTable, cityTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { HOME_SHORE_COOLDOWN_DAYS } from "@adrift/shared";
+import { bottleTable, db, userTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
 import { serializeIdentity } from "../lib/serialize";
+import { getShore } from "../lib/shores";
 import { requireAuth } from "../middleware/auth";
-import { logger } from "../lib/logger";
-import { clientIp, detectCountry, UNKNOWN_COUNTRY } from "../lib/geoip";
 import { rateLimit } from "../middleware/rateLimit";
 
 export const identityRouter = Router();
@@ -57,32 +56,6 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
-/**
- * Resolve the country in the background and patch the row once it lands.
- * Signup must not wait on a third-party lookup, and must not fail when that
- * lookup is unreachable.
- */
-function resolveCountryInBackground(userId: string, ip: string) {
-  void detectCountry(ip)
-    .then(async (country) => {
-      if (country === UNKNOWN_COUNTRY) return;
-      await db
-        .update(userTable)
-        .set({ homeCountry: country })
-        .where(eq(userTable.id, userId));
-    })
-    .catch((err) => logger.debug({ err }, "[identity] country backfill failed"));
-}
-
-async function cityExists(cityId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: cityTable.id })
-    .from(cityTable)
-    .where(eq(cityTable.id, cityId))
-    .limit(1);
-  return !!row;
-}
-
 identityRouter.get("/identity/available", rateLimit({ windowMs: 60_000, max: 90 }), async (req, res) => {
   const raw = req.query["nickname"];
   const check = validateNickname(Array.isArray(raw) ? raw[0] : raw);
@@ -112,9 +85,17 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
   }
   const nickname = check.value;
 
-  const homeCityId = typeof body.homeCityId === "string" ? body.homeCityId : null;
-  if (homeCityId && !(await cityExists(homeCityId))) {
-    res.status(400).json({ error: "Unknown homeCityId" });
+  // A shore is not optional. Everyone in Adrift lives somewhere: it decides
+  // what reaches them, what they can write to for free, and how long their
+  // letters spend at sea.
+  const homeShoreId = typeof body.homeShoreId === "string" ? body.homeShoreId : null;
+  if (!homeShoreId) {
+    res.status(400).json({ error: "homeShoreId is required — pick your shore" });
+    return;
+  }
+  const shore = await getShore(homeShoreId);
+  if (!shore) {
+    res.status(400).json({ error: "Unknown homeShoreId" });
     return;
   }
 
@@ -130,7 +111,7 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
   if (existing) {
     const response: IdentityCreateResponse = {
       token: existing.token,
-      identity: serializeIdentity(existing),
+      identity: await serializeIdentity(existing),
     };
     res.json(response);
     return;
@@ -140,8 +121,6 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
     res.status(409).json({ error: "That name is already taken — try another" });
     return;
   }
-
-  const ip = clientIp(req.headers as Record<string, unknown>, req.ip);
 
   let user;
   try {
@@ -153,9 +132,9 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
         token: randomBytes(24).toString("hex"),
         nickname,
         flag: randomFlag(),
-        homeCountry: UNKNOWN_COUNTRY,
-        homeCityId,
-        homeCityChangedAt: homeCityId ? new Date() : null,
+        homeCountry: shore.name,
+        homeShoreId: shore.id,
+        homeShoreChangedAt: new Date(),
       })
       .returning();
   } catch (err) {
@@ -168,46 +147,56 @@ identityRouter.post("/identity", createLimiter, async (req, res) => {
     throw err;
   }
 
-  resolveCountryInBackground(user!.id, ip);
-
   const response: IdentityCreateResponse = {
     token: user!.token,
-    identity: serializeIdentity(user!),
+    identity: await serializeIdentity(user!),
   };
   res.status(201).json(response);
 });
 
 identityRouter.get("/identity/me", requireAuth, async (req, res) => {
-  res.json(serializeIdentity(req.user!));
+  res.json(await serializeIdentity(req.user!));
 });
 
 /**
- * Move your home shore. Sending there is free, so an unlimited change would
- * make the Pro city feature meaningless — hop, send, hop again. A cooldown
- * keeps it an occasional move rather than a workaround.
+ * Move your home shore. Writing there is free, so an unlimited change would
+ * make the Pro feature meaningless — hop, send, hop again. A cooldown keeps
+ * it an occasional move rather than a workaround.
  */
 identityRouter.post("/identity/home", requireAuth, async (req, res) => {
   const user = req.user!;
-  const body = req.body as Partial<SetHomeCityRequest>;
-  const cityId = typeof body.cityId === "string" ? body.cityId : null;
+  const body = req.body as Partial<SetHomeShoreRequest>;
+  const shoreId = typeof body.shoreId === "string" ? body.shoreId : null;
 
-  if (!cityId) {
-    res.status(400).json({ error: "cityId is required" });
+  if (!shoreId) {
+    res.status(400).json({ error: "shoreId is required" });
     return;
   }
-  if (!(await cityExists(cityId))) {
-    res.status(400).json({ error: "Unknown cityId" });
+  const shore = await getShore(shoreId);
+  if (!shore) {
+    res.status(400).json({ error: "Unknown shoreId" });
     return;
   }
-  if (cityId === user.homeCityId) {
-    res.json(serializeIdentity(user));
+  if (shore.id === user.homeShoreId) {
+    res.json(await serializeIdentity(user));
     return;
   }
 
-  const cooldownMs = HOME_CITY_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
-  const changedAt = user.homeCityChangedAt?.getTime() ?? 0;
+  // The cooldown exists to stop shore-hopping being a way around Pro: pick a
+  // shore, write there free, pick the next one. So it only starts once the
+  // shore has actually been used that way. Until then — a mistyped pick at
+  // onboarding, a wrong guess from the IP, second thoughts — correcting it is
+  // free, and an account that never had a shore is arriving rather than
+  // moving at all.
+  const [{ used }] = await db
+    .select({ used: sql<number>`count(*)::int` })
+    .from(bottleTable)
+    .where(and(eq(bottleTable.authorId, user.id), eq(bottleTable.scope, "shore")));
+
+  const cooldownMs = HOME_SHORE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+  const changedAt = user.homeShoreChangedAt?.getTime() ?? 0;
   const readyAt = changedAt + cooldownMs;
-  if (changedAt && Date.now() < readyAt) {
+  if (user.homeShoreId && used > 0 && changedAt && Date.now() < readyAt) {
     const days = Math.ceil((readyAt - Date.now()) / (24 * 60 * 60 * 1000));
     res.status(429).json({
       error: `You moved shores recently. You can move again in ${days} ${days === 1 ? "day" : "days"}.`,
@@ -217,8 +206,12 @@ identityRouter.post("/identity/home", requireAuth, async (req, res) => {
 
   const [updated] = await db
     .update(userTable)
-    .set({ homeCityId: cityId, homeCityChangedAt: new Date() })
+    .set({
+      homeShoreId: shore.id,
+      homeShoreChangedAt: new Date(),
+      homeCountry: shore.name,
+    })
     .where(eq(userTable.id, user.id))
     .returning();
-  res.json(serializeIdentity(updated!));
+  res.json(await serializeIdentity(updated!));
 });

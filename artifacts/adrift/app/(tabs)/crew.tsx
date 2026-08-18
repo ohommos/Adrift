@@ -17,6 +17,7 @@ import { findHomeShore } from '@/lib/homeShore';
 import { ShorePicker } from '@/components/ShorePicker';
 import { showAlert, showConfirm } from '@/lib/alert';
 import { CREDITS_PER_REPLY } from '@/lib/limits';
+import { TAGLINE } from '@/lib/brand';
 import { Rule, TopBar, webBottom, webTop } from '@/components/ui/primitives';
 
 export default function YouScreen() {
@@ -204,6 +205,10 @@ export default function YouScreen() {
             </Pressable>
           )}
         </View>
+
+        {/* The standing line, where someone goes looking for what this is.
+            Quiet on purpose — a signature, not a banner. */}
+        <Text style={[styles.motto, { color: colors.mutedForeground }]}>{TAGLINE}</Text>
       </ScrollView>
 
       <Modal
@@ -241,6 +246,16 @@ export default function YouScreen() {
 }
 
 const styles = StyleSheet.create({
+  motto: {
+    fontSize: 10,
+    fontFamily: 'Cinzel_400Regular',
+    textAlign: 'center',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginTop: 26,
+    opacity: 0.55,
+    paddingLeft: 2,
+  },
   root: { flex: 1 },
   identity: { alignItems: 'center', paddingVertical: 22 },
   avatar: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },

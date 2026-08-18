@@ -17,6 +17,7 @@ import { useIdentity } from '@/context/IdentityContext';
 import { api, useShores, useSuggestedShore } from '@/lib/api';
 import { getStoredItem, setStoredItem } from '@/lib/storage';
 import { ShorePicker } from '@/components/ShorePicker';
+import { TAGLINE } from '@/lib/brand';
 import type { Shore } from '@adrift/shared';
 
 const DEVICE_ID_KEY = 'adrift.deviceId';
@@ -121,6 +122,9 @@ export default function OnboardingScreen() {
       >
         {/* Wordmark */}
         <Text style={[styles.wordmark, { color: colors.primary }]}>Adrift</Text>
+        {/* What the app is for, above what it is — the promise reads first,
+            the mechanics explain it underneath. */}
+        <Text style={[styles.motto, { color: colors.primary }]}>{TAGLINE}</Text>
         <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
           A message in a bottle.{'\n'}Cast it. Forget it. Wait.
         </Text>
@@ -224,12 +228,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 2,
   },
+  motto: {
+    fontSize: 11,
+    fontFamily: 'Cinzel_400Regular',
+    textAlign: 'center',
+    letterSpacing: 2.2,
+    textTransform: 'uppercase',
+    marginTop: 10,
+    opacity: 0.75,
+    // letterSpacing adds a trailing gap after the last character, which
+    // shifts centred text left by that much. Pay it back on the left.
+    paddingLeft: 2.2,
+  },
   tagline: {
     fontSize: 16,
     fontFamily: 'Spectral_400Regular',
     textAlign: 'center',
     lineHeight: 24,
-    marginTop: 8,
+    marginTop: 18,
     marginBottom: 32,
   },
   divider: {
